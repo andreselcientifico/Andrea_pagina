@@ -3,6 +3,7 @@ mod func;
 mod auth;
 mod config;
 mod test;
+mod errors;
 
 use actix_web::{ web, App, HttpServer };
 use openssl::ssl::{ SslAcceptor, SslFiletype, SslMethod };

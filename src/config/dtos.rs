@@ -4,7 +4,7 @@ use serde::{ Deserialize, Serialize };
 
 use crate::models::models::{ UserRole, User };
 
-#[derive(Validate, Debug, default, Clone, Serialize, Deserialize)]
+#[derive(Validate, Debug, Default, Clone, Serialize, Deserialize)]
 pub struct RegisterDTO {
     #[validate(length(min = 1, message = "El nombre de usuario es requerido"))]
     pub name: String,
@@ -48,6 +48,7 @@ pub struct RequestQueryDto {
     pub limit: Option<usize>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
 pub struct FilterUserDto {
     pub id: Option<String>,
     pub name: Option<String>,
@@ -89,4 +90,99 @@ pub struct UserData {
 pub struct UserResponseDto {
     pub status: String,
     pub data: UserData,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UserListResponseDto {
+    pub status: String,
+    pub users: Vec<FilterUserDto>,
+    pub results: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UserLoginResponseDto {
+    pub status: String,
+    pub token: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Response {
+    pub status: &'static str,
+    pub message: String,
+}
+
+#[derive(Validate, Debug, Default, Clone, Serialize, Deserialize)]
+pub struct NameUpdateDTO {
+    #[validate(length(min = 1, message = "El nombre de usuario es requerido"))]
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+pub struct RoleUpdateDTO {
+    #[validate(custom = "validate_user_role")]
+    pub role: UserRole,
+}
+
+fn validate_user_role(role: &UserRole) -> Result<(), validator::ValidationError> {
+    match role {
+        UserRole::Admin | UserRole::User => Ok(()),
+        _ => Err(validator::ValidationError::new("Invalid user role")),
+    }
+}
+
+#[derive(Debug, Validate, Default, Clone, Serialize, Deserialize)]
+pub struct UserPasswordUpdateDTO {
+    #[validate(
+        length(min = 1, message = "La contraseña actual es requerida"),
+        length(min = 6, message = "La contraseña debe tener al menos 6 caracteres")
+    )]
+    #[serde(rename = "old_Password")]
+    pub old_password: String,
+    #[validate(
+        length(min = 1, message = "La nueva contraseña es requerida"),
+        length(min = 6, message = "La nueva contraseña debe tener al menos 6 caracteres")
+    )]
+    #[serde(rename = "newPassword")]
+    pub new_password: String,
+    #[validate(
+        length(min = 1, message = "Confirmar nueva contraseña es requerido"),
+        length(min = 6, message = "Confirmar nueva contraseña debe tener al menos 6 caracteres"),
+        must_match(other = "new_password", message = "Las contraseñas no coinciden")
+    )]
+    #[serde(rename = "confirmNewPassword")]
+    pub confirm_new_password: String,
+}
+
+#[derive(Serialize, Deserialize, Validate)]
+pub struct VerifyEmailQueryDTO {
+    #[validate(length(min = 1, message = "El token es requerido"))]
+    pub token: String,
+}
+
+#[derive(Deserialize, Serialize, Validate, Debug, Clone)]
+pub struct ForgotPasswordRequestDTO {
+    #[validate(
+        length(min = 1, message = "El correo electrónico es requerido"),
+        email(message = "El correo electrónico no es válido")
+    )]
+    pub email: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Validate, Clone)]
+pub struct ResetPasswordRequestDTO {
+    #[validate(length(min = 1, message = "El token es requerido"))]
+    pub token: String,
+    #[validate(
+        length(min = 1, message = "La nueva contraseña es requerida"),
+        length(min = 6, message = "La nueva contraseña debe tener al menos 6 caracteres")
+    )]
+    #[serde(rename = "newPassword")]
+    pub new_password: String,
+    #[validate(
+        length(min = 1, message = "Confirmar nueva contraseña es requerido"),
+        length(min = 6, message = "Confirmar nueva contraseña debe tener al menos 6 caracteres"),
+        must_match(other = "new_password", message = "Las contraseñas no coinciden")
+    )]
+    #[serde(rename = "confirmNewPassword")]
+    pub confirm_new_password: String,
 }
