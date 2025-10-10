@@ -9,7 +9,7 @@ CREATE TABLE users (
     verified BOOLEAN NOT NULL DEFAULT FALSE,
     password VARCHAR(100) NOT NULL,
     verification_token VARCHAR(255),
-    token_expires_at TIMESTAMP WITH TIME ZONE,
+    token_expiry TIMESTAMP WITH TIME ZONE,
     role user_role NOT NULL DEFAULT 'user',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()

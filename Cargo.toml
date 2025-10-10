@@ -6,11 +6,12 @@ edition = "2024"
 [dependencies]
 actix-web = { version = "4.11.0", features = ["openssl"] }
 argon2 = "0.5.3"
+async-trait = "0.1.89"
 bcrypt = "0.17.1"
 chrono = { version = "0.4.42", features = ["serde"] }
 dotenvy = "0.15.7"
 jsonwebtoken = "9.3.1"
-lettre = "0.11.18"
+lettre = "0.11.19"
 mockall = "0.13.1"
 openssl = "0.10.73"
 reqwest = { version = "0.12.23", features = [
