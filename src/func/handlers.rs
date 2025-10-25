@@ -1,35 +1,16 @@
 use actix_web::{ post, web, HttpResponse, http::header };
-use reqwest::Client;
+use crate::{AppState, CachedToken};
 use serde::Deserialize;
-use std::{ env, sync::Arc };
-use tokio::sync::Mutex;
+use std::{ env};
 use serde_json::json;
-use chrono::{ Duration, Utc, DateTime };
+use chrono::{ Duration, Utc };
 use sqlx::PgPool;
 use uuid::Uuid;
 use crate::models::models::User;
 use crate::auth::auth::{ hash_password, verify_password, generate_jwt, verify_jwt };
 
-#[derive(Clone)]
-pub struct AppState {
-    pub client: Client,
-    pub paypal_api_mode: String,
-    pub paypal_client_id: String,
-    pub paypal_secret: String,
-    pub token_cache: Arc<Mutex<Option<CachedToken>>>,
-}
 
-#[derive(Clone, Debug)]
-pub struct CachedToken {
-    access_token: String,
-    expires_at: DateTime<Utc>,
-}
 
-impl CachedToken {
-    fn is_valid(&self) -> bool {
-        Utc::now() < self.expires_at
-    }
-}
 
 // ===================== //
 //  Obtener token con cache
@@ -46,8 +27,8 @@ async fn get_paypal_token(state: &AppState) -> String {
 
     // Caso contrario, pedir uno nuevo
     let resp = state.client
-        .post(format!("{}/v1/oauth2/token", state.paypal_api_mode))
-        .basic_auth(&state.paypal_client_id, Some(&state.paypal_secret))
+        .post(format!("{}/v1/oauth2/token", state.env.paypal_api_mode))
+        .basic_auth(&state.env.paypal_client_id, Some(&state.env.paypal_secret))
         .form(&[("grant_type", "client_credentials")])
         .send().await
         .expect("Error solicitando token");
@@ -174,7 +155,7 @@ async fn created_order(state: web::Data<AppState>) -> HttpResponse {
     let access_token = get_paypal_token(&state).await;
 
     let res = state.client
-        .post(format!("{}/v2/checkout/orders", state.paypal_api_mode))
+        .post(format!("{}/v2/checkout/orders", state.env.paypal_api_mode))
         .bearer_auth(&access_token)
         .json(&body)
         .send().await

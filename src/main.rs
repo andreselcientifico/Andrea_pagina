@@ -5,25 +5,42 @@ mod config;
 mod test;
 mod errors;
 mod db;
+mod utils;
+mod middleware;
 
 use actix_web::{ web, App, HttpServer };
+use chrono::{ DateTime, Utc };
 use openssl::ssl::{ SslAcceptor, SslFiletype, SslMethod };
+use config::config::Config;
 use reqwest::Client;
-use std::{ env, sync::Arc };
+use std::{ sync::Arc };
 use tokio::sync::Mutex;
 use db::db::DBClient;
 use sqlx::postgres::PgPoolOptions;
 use dotenvy;
-use crate::func::handlers::{ AppState };
 use actix_web::http::header::{ AUTHORIZATION, ACCEPT, CONTENT_TYPE };
 
 
 //==================== //
-//      DB POOL
+//      APP STATE
 // ==================== //
 #[derive(Clone, Debug)]
-pub struct PgPoolWrapper {
-    pub db_pool: DBClient,
+pub struct AppState {
+    pub env: Config,
+    pub client: Client,
+    pub token_cache: Arc<Mutex<Option<CachedToken>>>,
+}
+
+#[derive(Clone, Debug)]
+pub struct CachedToken {
+    access_token: String,
+    expires_at: DateTime<Utc>,
+}
+
+impl CachedToken {
+    fn is_valid(&self) -> bool {
+        Utc::now() < self.expires_at
+    }
 }
 
 // ===================== //
@@ -37,12 +54,14 @@ async fn main() -> std::io::Result<()> {
     builder.set_private_key_file("key.pem", SslFiletype::PEM).unwrap();
     builder.set_certificate_chain_file("cert.pem").unwrap();
 
-    let client = Client::new();
-
+    let state = AppState {
+        env: Config::init(),
+        client: Client::new(),
+        token_cache: Arc::new(Mutex::new(None)),
+    };
     // Crear conexión a Postgres
-    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL no está definido");
     let pool = match PgPoolOptions::new()
-        .connect(&database_url).await
+        .connect(&state.env.database_url).await
     {
         Ok(pool) => {
             println!("✅ Conectado a la base de datos");
@@ -53,34 +72,23 @@ async fn main() -> std::io::Result<()> {
             return Err(std::io::Error::new(std::io::ErrorKind::Other, "Database connection failed"));
         }
     };
-
-    let state = AppState {
-        client,
-        paypal_api_mode: env
-            ::var("PAYPAL_API_MODE")
-            .unwrap_or("https://api-m.sandbox.paypal.com".to_string()),
-        paypal_client_id: env
-            ::var("PAYPAL_API_CLIENT_ID")
-            .expect("PAYPAL_API_CLIENT_ID no definido"),
-        paypal_secret: env::var("PAYPAL_API_SECRET").expect("PAYPAL_API_SECRET no definido"),
-        token_cache: Arc::new(Mutex::new(None)),
-    };
     let db = DBClient::new(pool);
-
+    
     HttpServer::new(move || {
-
-        let cors = actix_cors::Cors::default()
-        .allowed_origin("http://localhost:3000")
-        .allowed_origin_fn(| origin, _req_head| {
-            origin.as_bytes().ends_with(b"localhost:3000")
-        })
-        .allowed_methods(vec!["GET", "POST", "PUT", "DELETE"])
-        .allowed_headers(vec![AUTHORIZATION, ACCEPT])
-        .allowed_header(CONTENT_TYPE)
-        .max_age(3600);
+ 
 
         App::new()
-            .wrap(cors)
+            .wrap(
+                actix_cors::Cors::default()
+                .allowed_origin("http://localhost:3000")
+                .allowed_origin_fn(| origin, _req_head| {
+                    origin.as_bytes().ends_with(b"localhost:3000")
+                })
+                .allowed_methods(vec!["GET", "POST", "PUT", "DELETE"])
+                .allowed_headers(vec![AUTHORIZATION, ACCEPT])
+                .allowed_header(CONTENT_TYPE)
+                .max_age(3600)
+            )
             .app_data(web::Data::new(state.clone()))
             .app_data(web::Data::new(db.clone()))
             .service(func::handlers::created_order)
