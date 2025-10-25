@@ -23,11 +23,11 @@ mod tests {
             name: "Test Name".to_string(),
             verified: false,
             password: "password123".to_string(),
-            role: UserRole::User,
+            role: Some(UserRole::User),
             verification_token: Some("token123".to_string()),
             token_expiry: None,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
+            created_at: Some(Utc::now()),
+            updated_at: Some(Utc::now()),
         }
     }
 
@@ -45,7 +45,7 @@ mod tests {
         assert!(result.is_ok());
         let retrieved_user = result.unwrap();
         assert_eq!(retrieved_user.email, "test@example.com");
-        assert_eq!(retrieved_user.role, UserRole::User);
+        assert_eq!(retrieved_user.role, Some(UserRole::User));
     }
 
     #[test]
@@ -68,13 +68,13 @@ mod tests {
         let user_id = uuid::Uuid::new_v4();
 
         let mut user = build_test_user(user_id);
-        user.role = UserRole::Admin;
+        user.role = Some(UserRole::Admin);
 
         mock.expect_get_user()
             .with(eq(user_id))
             .returning(move |_| Ok(user.clone()));
 
         let result = CustomUserTrait::get_user(&mock, &user_id).unwrap();
-        assert_eq!(result.role, UserRole::Admin);
+        assert_eq!(result.role, Some(UserRole::Admin));
     }
 }

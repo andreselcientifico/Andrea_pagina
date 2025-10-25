@@ -15,7 +15,7 @@ pub fn verify_password(password: &str, hash: &str) -> bool {
 }
 
 /// Datos dentro del token JWT
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 struct Claims {
     sub: String, // subject (user id)
     exp: usize,  // expiration time as unix timestamp

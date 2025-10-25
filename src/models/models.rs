@@ -36,13 +36,13 @@ pub struct User {
     pub email: String,
     pub verified: bool,
     pub password: String,
-    pub role: UserRole,
+    pub role: Option<UserRole>,
     pub verification_token: Option<String>,
     pub token_expiry: Option<DateTime<Utc>>,
     #[serde(rename = "createdAt")]
-    pub created_at: DateTime<Utc>,
+    pub created_at: Option<DateTime<Utc>>,
     #[serde(rename = "updatedAt")]
-    pub updated_at: DateTime<Utc>,
+    pub updated_at: Option<DateTime<Utc>>,
 }
 
 ///===================== ///
