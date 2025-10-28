@@ -13,12 +13,13 @@ use chrono::{ DateTime, Utc };
 use openssl::ssl::{ SslAcceptor, SslFiletype, SslMethod };
 use config::config::Config;
 use reqwest::Client;
-use std::{ sync::Arc };
+use std::sync::Arc ;
 use tokio::sync::Mutex;
 use db::db::DBClient;
 use sqlx::postgres::PgPoolOptions;
 use dotenvy;
 use actix_web::http::header::{ AUTHORIZATION, ACCEPT, CONTENT_TYPE };
+use middleware::middleware::AuthMiddlewareFactory;
 
 
 //==================== //
@@ -29,6 +30,7 @@ pub struct AppState {
     pub env: Config,
     pub client: Client,
     pub token_cache: Arc<Mutex<Option<CachedToken>>>,
+    pub db_client: DBClient, 
 }
 
 #[derive(Clone, Debug)]
@@ -53,15 +55,10 @@ async fn main() -> std::io::Result<()> {
     let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
     builder.set_private_key_file("key.pem", SslFiletype::PEM).unwrap();
     builder.set_certificate_chain_file("cert.pem").unwrap();
-
-    let state = AppState {
-        env: Config::init(),
-        client: Client::new(),
-        token_cache: Arc::new(Mutex::new(None)),
-    };
+   
     // Crear conexión a Postgres
     let pool = match PgPoolOptions::new()
-        .connect(&state.env.database_url).await
+        .connect(&Config::init().database_url).await
     {
         Ok(pool) => {
             println!("✅ Conectado a la base de datos");
@@ -74,6 +71,13 @@ async fn main() -> std::io::Result<()> {
     };
     let db = DBClient::new(pool);
     
+     let state = AppState {
+        env: Config::init(),
+        client: Client::new(),
+        token_cache: Arc::new(Mutex::new(None)),
+        db_client: db.clone(),
+    };
+
     HttpServer::new(move || {
  
 
@@ -91,12 +95,16 @@ async fn main() -> std::io::Result<()> {
             )
             .app_data(web::Data::new(state.clone()))
             .app_data(web::Data::new(db.clone()))
-            .service(func::handlers::created_order)
-            .service(func::handlers::capture_order)
-            .service(func::handlers::cancel_order)
             .service(func::handlers::register_user)
             .service(func::handlers::login_user)
-            .service(func::handlers::get_user_profile)
+            .service(
+            web::scope("/api")
+                .wrap(AuthMiddlewareFactory::new(Arc::new(state.clone())))
+                .service(func::handlers::get_user_profile)
+                .service(func::handlers::created_order)
+                .service(func::handlers::capture_order)
+                .service(func::handlers::cancel_order)
+        )
             
     })
         .workers(8)

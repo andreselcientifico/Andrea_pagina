@@ -1,4 +1,4 @@
-use actix_web::{ post, web, HttpResponse, http::header };
+use actix_web::{ post, web, HttpResponse, http::header, HttpRequest, HttpMessage };
 use crate::{AppState, CachedToken};
 use serde::Deserialize;
 use std::{ env};
@@ -7,7 +7,8 @@ use chrono::{ Duration, Utc };
 use sqlx::PgPool;
 use uuid::Uuid;
 use crate::models::models::User;
-use crate::auth::auth::{ hash_password, verify_password, generate_jwt, verify_jwt };
+use crate::auth::auth::{ hash_password, verify_password, generate_jwt };
+use crate::middleware::middleware::JWTAuthMiddleware;  
 
 
 
@@ -76,7 +77,7 @@ pub async fn register_user(
     let query = sqlx
         ::query_as::<_, User>(
             "INSERT INTO users (id, username, email, password_hash, created_at, updated_at)
-        VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))
+        VALUES ($1, $2, $3, $4, NOW(), NOW())
         RETURNING id, username, email, password_hash, created_at, updated_at"
         )
         .bind(user_id)
@@ -114,20 +115,13 @@ pub async fn login_user(pool: web::Data<PgPool>, data: web::Json<LoginInput>) ->
 
 /// Obtener perfil
 #[post("/profile")]
-pub async fn get_user_profile(pool: web::Data<PgPool>, token: web::Query<String>) -> HttpResponse {
-    if let Some(user_id) = verify_jwt(&token.into_inner()) {
-        let query = sqlx
-            ::query_as::<_, User>("SELECT * FROM users WHERE id = $1")
-            .bind(user_id)
-            .fetch_one(pool.get_ref()).await;
-
-        match query {
-            Ok(user) => HttpResponse::Ok().json(user),
-            Err(_) => HttpResponse::NotFound().body("Usuario no encontrado"),
-        }
-    } else {
-        HttpResponse::Unauthorized().body("Token inválido o expirado")
-    }
+pub async fn get_user_profile(req: HttpRequest) -> HttpResponse {
+    let extensions = req.extensions();
+    let user_data = extensions
+        .get::<JWTAuthMiddleware>()
+        .expect("Usuario no autenticado");
+    
+    HttpResponse::Ok().json(&user_data.user)
 }
 
 // ===================== //

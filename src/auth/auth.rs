@@ -1,8 +1,9 @@
 use bcrypt::{hash, verify, DEFAULT_COST};
 use jsonwebtoken::{encode, decode, Header, Validation, EncodingKey, DecodingKey};
 use serde::{Serialize, Deserialize};
-use std::env;
+use std::fs;
 use chrono::{Utc, Duration};
+use jsonwebtoken::Algorithm::RS256;
 
 /// Hasear Contraseña
 pub fn hash_password(password: &str) -> String {
@@ -23,7 +24,7 @@ struct Claims {
 
 /// Generar Token JWT de session
 pub fn generate_jwt(user_id: &str) -> String {
-    let secret = env::var("JWT_SECRET").expect("JWT_SECRET no está configurado");
+    let private_key_pem = fs::read("private_key.pem").expect("Error leyendo private_key.pem");
     let expiration = Utc::now()
         .checked_add_signed(Duration::hours(24))
         .expect("Error al calcular la expiración del token")
@@ -34,16 +35,17 @@ pub fn generate_jwt(user_id: &str) -> String {
         exp: expiration,
     };
 
-    encode(&Header::default(), &claims, &EncodingKey::from_secret(secret.as_ref()))
+    encode(&Header::new(RS256), &claims, &EncodingKey::from_rsa_pem(&private_key_pem).expect("Clave privada invalida"))
         .expect("Error al generar el token JWT")
 }
 
 /// Verificar y decodificar Token JWT
 pub fn verify_jwt(token: &str) -> Option<String> {
+    let public_key_pem = fs::read("public_key.pem").expect("Error leyendo public_key.pem");
     match decode::<Claims>(
         token,
-        &DecodingKey::from_secret(env::var("JWT_SECRET").expect("JWT_SECRET no está configurado").as_ref()),
-        &Validation::default(),
+        &DecodingKey::from_rsa_pem(&public_key_pem).expect("Clave pública inválida"),
+        &Validation::new(RS256),
     ) {
         Ok(data) => Some(data.claims.sub),
         Err(_) => None,
