@@ -61,11 +61,13 @@ pub trait UserExt {
         password: String,
     ) -> Result<User, sqlx::Error>;
 
+    #[allow(dead_code)]
     async fn verifed_token(
         &self,
         token: &str,
     ) -> Result<(), sqlx::Error>;
 
+    #[allow(dead_code)]
     async fn add_verifed_token(
         &self,
         user_id: Uuid,

@@ -1,6 +1,7 @@
 use core::str;
 use chrono::{ DateTime, Utc };
 use serde::{ Deserialize, Serialize };
+use validator::Validate; 
 
 use crate::models::models::{ UserRole, User };
 
@@ -14,8 +15,7 @@ pub struct RegisterDTO {
     )]
     pub email: String,
     #[validate(
-        length(min = 1, message = "La contraseña es requerida"),
-        length(min = 6, message = "La contraseña debe tener al menos 6 caracteres")
+        length(min = 6, message = "La contraseña debe tener al menos 6 caracteres"),
     )]
     pub password: String,
     #[validate(
@@ -34,7 +34,6 @@ pub struct LoginDTO {
     )]
     pub email: String,
     #[validate(
-        length(min = 1, message = "La contraseña es requerida"),
         length(min = 6, message = "La contraseña debe tener al menos 6 caracteres")
     )]
     pub password: String,
@@ -64,11 +63,11 @@ pub struct FilterUserDto {
 impl FilterUserDto {
     pub fn filter_user(user: &User) -> Self {
         FilterUserDto {
-            id: user.id.to_string(),
-            name: user.name.to_owned(),
-            email: user.email.to_owned(),
-            role: user.role.to_str().to_string(),
-            verified: user.verified,
+            id: Some(user.id.to_string()),
+            name: Some(user.name.to_owned()),
+            email: Some(user.email.to_owned()),
+            role: Some(user.role.expect("Falta el role")),
+            verified: Some(user.verified),
             created_at: user.created_at,
             updated_at: user.updated_at,
         }
@@ -119,46 +118,42 @@ pub struct NameUpdateDTO {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct RoleUpdateDTO {
-    #[validate(custom = "validate_user_role")]
+    #[validate(custom(message = "Rol de usuario inválido", function = "validate_user_role"))]
     pub role: UserRole,
 }
 
 fn validate_user_role(role: &UserRole) -> Result<(), validator::ValidationError> {
     match role {
         UserRole::Admin | UserRole::User => Ok(()),
-        _ => Err(validator::ValidationError::new("Invalid user role")),
     }
 }
 
 #[derive(Debug, Validate, Default, Clone, Serialize, Deserialize)]
 pub struct UserPasswordUpdateDTO {
     #[validate(
-        length(min = 1, message = "La contraseña actual es requerida"),
         length(min = 6, message = "La contraseña debe tener al menos 6 caracteres")
     )]
     #[serde(rename = "old_Password")]
     pub old_password: String,
     #[validate(
-        length(min = 1, message = "La nueva contraseña es requerida"),
         length(min = 6, message = "La nueva contraseña debe tener al menos 6 caracteres")
     )]
     #[serde(rename = "newPassword")]
     pub new_password: String,
     #[validate(
-        length(min = 1, message = "Confirmar nueva contraseña es requerido"),
         length(min = 6, message = "Confirmar nueva contraseña debe tener al menos 6 caracteres"),
         must_match(other = "new_password", message = "Las contraseñas no coinciden")
     )]
     #[serde(rename = "confirmNewPassword")]
     pub confirm_new_password: String,
 }
-
+#[allow(dead_code)]
 #[derive(Serialize, Deserialize, Validate)]
 pub struct VerifyEmailQueryDTO {
     #[validate(length(min = 1, message = "El token es requerido"))]
     pub token: String,
 }
-
+#[allow(dead_code)]
 #[derive(Deserialize, Serialize, Validate, Debug, Clone)]
 pub struct ForgotPasswordRequestDTO {
     #[validate(
@@ -167,19 +162,17 @@ pub struct ForgotPasswordRequestDTO {
     )]
     pub email: String,
 }
-
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize, Validate, Clone)]
 pub struct ResetPasswordRequestDTO {
     #[validate(length(min = 1, message = "El token es requerido"))]
     pub token: String,
     #[validate(
-        length(min = 1, message = "La nueva contraseña es requerida"),
         length(min = 6, message = "La nueva contraseña debe tener al menos 6 caracteres")
     )]
     #[serde(rename = "newPassword")]
     pub new_password: String,
     #[validate(
-        length(min = 1, message = "Confirmar nueva contraseña es requerido"),
         length(min = 6, message = "Confirmar nueva contraseña debe tener al menos 6 caracteres"),
         must_match(other = "new_password", message = "Las contraseñas no coinciden")
     )]

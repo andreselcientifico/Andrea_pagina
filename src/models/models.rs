@@ -17,6 +17,7 @@ pub enum UserRole {
 //   Métodos para UserRole
 // ==================== //
 impl UserRole {
+    #[allow(dead_code)]
     pub fn to_str(&self) -> &str {
         match self {
             UserRole::Admin => "admin",
@@ -48,6 +49,7 @@ pub struct User {
 ///===================== ///
 ///  Modelo de SUSCRIPCIÓN
 /// =================== ///
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Subscription {
     pub id: Uuid,
@@ -64,6 +66,7 @@ pub struct Subscription {
 ///===================== ///
 ///  Modelo de CURSO
 /// =================== ///
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Course {
     pub id: Uuid,
@@ -77,6 +80,7 @@ pub struct Course {
 ///===================== ///
 /// Modelo: RELACION USUARIO-CURSO (Compras)
 /// =================== ///
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct UserCourse {
     pub id: Uuid,
@@ -90,6 +94,7 @@ pub struct UserCourse {
 ///===================== ///
 ///  MODELO: PROGRESO DE CURSO
 /// =================== ///
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct CourseProgress {
     pub id: Uuid,

@@ -1,16 +1,20 @@
-use actix_web::{ post, web, HttpResponse, http::header, HttpRequest, HttpMessage };
-use crate::{AppState, CachedToken};
+use actix_web::{ 
+    HttpMessage, HttpRequest, HttpResponse, cookie::Cookie, http::header, post, web::{ Data, Json, Query}
+};
+use std::sync::Arc;
+use validator::Validate;
+use crate::{AppState, CachedToken, config::dtos::{ForgotPasswordRequestDTO, VerifyEmailQueryDTO}, db::db::UserExt};
 use serde::Deserialize;
-use std::{ env};
+use std::env;
 use serde_json::json;
 use chrono::{ Duration, Utc };
-use sqlx::PgPool;
 use uuid::Uuid;
-use crate::models::models::User;
-use crate::auth::auth::{ hash_password, verify_password, generate_jwt };
+use crate::mail::mails::{ send_verification_email, send_welcome_email, send_forgot_password_email };
+use crate::utils::password::{hash_password, verify_password};
+use crate::utils::token::create_token_rsa;
+use crate::errors::error::{ ErrorMessage, HttpError };
 use crate::middleware::middleware::JWTAuthMiddleware;  
-
-
+use crate::config::dtos::{ RegisterDTO, LoginDTO, Response , UserLoginResponseDto, ResetPasswordRequestDTO };
 
 
 // ===================== //
@@ -50,67 +54,219 @@ async fn get_paypal_token(state: &AppState) -> String {
 
     access_token
 }
-
-#[derive(Deserialize)]
-pub struct RegisterInput {
-    pub username: String,
-    pub email: String,
-    pub password: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct LoginInput {
-    pub email: String,
-    pub password: String,
-}
+// ===================== //
+//    Handlers de Autenticación
+// ===================== //
 
 /// Registrar usuario
 #[post("/register")]
 pub async fn register_user(
-    pool: web::Data<PgPool>,
-    data: web::Json<RegisterInput>
-) -> HttpResponse {
-    let password_hash = hash_password(&data.password);
+    app_state: Data<Arc<AppState>>,
+    Json(body): Json<RegisterDTO>
+) -> Result<HttpResponse, HttpError> {
+    body.validate()
+        .map_err(|e|  HttpError::bad_request(e.to_string()))?;
 
-    let user_id = Uuid::new_v4();
+     let verification_token = Uuid::new_v4().to_string();
+     let expires_at = Utc::now() + Duration::hours(24);
+    let password_hash = hash_password(&body.password)
+        .map_err(|e| HttpError::server_error(e.to_string()))?;
 
-    let query = sqlx
-        ::query_as::<_, User>(
-            "INSERT INTO users (id, username, email, password_hash, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, NOW(), NOW())
-        RETURNING id, username, email, password_hash, created_at, updated_at"
-        )
-        .bind(user_id)
-        .bind(&data.username)
-        .bind(&data.email)
-        .bind(&password_hash)
-        .fetch_one(pool.get_ref()).await;
+    let result = app_state.db_client
+        .save_user(&body.name, &body.email, &password_hash, &verification_token, Some(expires_at))
+        .await;
 
-    match query {
-        Ok(user) => HttpResponse::Ok().json(user),
-        Err(e) => HttpResponse::InternalServerError().body(format!("Error: {}", e)),
+    match result {
+        Ok(_user) => {
+            let send_email_result = send_verification_email(&body.email, &body.name, &verification_token).await;
+
+            if let Err(e) = send_email_result {
+                eprintln!("Fallo al enviar email de verificación: {:?}", e);
+            }
+            Ok(HttpResponse::Created().json(Response {
+                status: "success",
+                message: "Usuario registrado exitosamente. Por favor, verifica tu email.".to_string()
+            }))
+        },
+        Err(sqlx::Error::Database(db_err)) => {
+            if db_err.is_unique_violation() {
+                Err(HttpError::unique_constraint_violation(
+                    ErrorMessage::EmailExist.to_string(),
+                ))
+            } else {
+                Err(HttpError::server_error(db_err.to_string()))
+            }
+        },
+        Err(e) => Err(HttpError::server_error(e.to_string()))
     }
 }
 
 /// Login usuario
 #[post("/login")]
-pub async fn login_user(pool: web::Data<PgPool>, data: web::Json<LoginInput>) -> HttpResponse {
-    let query = sqlx
-        ::query_as::<_, User>("SELECT * FROM users WHERE email = $1")
-        .bind(&data.email)
-        .fetch_one(pool.get_ref()).await;
+pub async fn login_user(app_state: Data<Arc<AppState>>, Json(body): Json<LoginDTO>) -> Result<HttpResponse, HttpError> {
 
-    match query {
-        Ok(user) => {
-            if verify_password(&data.password, &user.password) {
-                let token = generate_jwt(&user.id.to_string());
-                HttpResponse::Ok().json(serde_json::json!({ "token": token }))
-            } else {
-                HttpResponse::Unauthorized().body("Credenciales inválidas")
-            }
-        }
-        Err(_) => HttpResponse::Unauthorized().body("Usuario no encontrado"),
+    body.validate()
+       .map_err(|e| HttpError::bad_request(e.to_string()))?;
+
+    let user =  app_state.db_client
+        .get_user(None, None, Some(&body.email), None)
+        .await
+        .map_err(|e| HttpError::server_error(e.to_string()))?.ok_or(HttpError::bad_request(ErrorMessage::WrongCredentials.to_string()))?;
+
+    if verify_password(&body.password, &user.password)
+        .map_err(|_| HttpError::bad_request(ErrorMessage::WrongCredentials.to_string()))? {
+        let token = create_token_rsa(&user.id.to_string(), &app_state.env.encoding_key, app_state.env.jwt_maxage)
+            .map_err(|e| HttpError::server_error(e.to_string()))?;
+
+        Ok(
+            HttpResponse::Ok()
+            .cookie(
+                Cookie::build("token", token.clone())
+                .path("/")
+                .max_age(time::Duration::minutes(app_state.env.jwt_maxage * 60))
+                .http_only(true)
+                .secure(true) 
+                .finish()
+                ).json(UserLoginResponseDto {
+                    status: "success".to_string(),
+                    token,
+                }
+            )
+        )
+    } 
+    else {
+        Err(HttpError::bad_request(ErrorMessage::WrongCredentials.to_string()))
     }
+}
+
+
+#[post("/verify")]
+pub async fn verify_email(Query(query_params): Query<VerifyEmailQueryDTO>, app_state: Data<Arc<AppState>>) -> Result<HttpResponse, HttpError> {
+    query_params.validate()
+        .map_err(|e| HttpError::bad_request(e.to_string()))?;
+
+    let user = app_state.db_client
+        .get_user(None, None, Some(&query_params.token), None)
+        .await
+        .map_err(|e| HttpError::server_error(e.to_string()))?.ok_or(HttpError::unauthorized(ErrorMessage::InvalidToken.to_string()))?;
+
+    if let Some(expires_at) = user.token_expiry {
+        if Utc::now() > expires_at {
+            return Err(HttpError::bad_request("Verificacion del token ha expirado.".to_string()));
+        }
+    } else {
+        return Err(HttpError::bad_request("token inválido.".to_string()));
+    }
+
+    app_state.db_client
+        .verifed_token(&query_params.token)
+        .await
+        .map_err(|e| HttpError::server_error(e.to_string()))?;
+
+    let send_welcome_email_result = send_welcome_email(&user.email, &user.name).await;
+
+    if let Err(e) = send_welcome_email_result {
+        eprintln!("Fallo al enviar email de bienvenida: {:?}", e);
+    }
+
+    let token = create_token_rsa(&user.id.to_string(), &app_state.env.encoding_key, app_state.env.jwt_maxage)
+        .map_err(|e| HttpError::server_error(e.to_string()))?;
+
+    Ok(
+            HttpResponse::Ok()
+            .cookie(
+                Cookie::build("token", token.clone())
+                .path("/settings")
+                .max_age(time::Duration::minutes(app_state.env.jwt_maxage * 60))
+                .http_only(true)
+                .secure(true) 
+                .finish()
+                ).json(UserLoginResponseDto {
+                    status: "success".to_string(),
+                    token,
+                }
+            )
+        )
+}
+
+
+#[post("/forgot-password")]
+pub async fn forgot_password(
+    app_state: Data<Arc<AppState>>,
+    Json(body): Json<ForgotPasswordRequestDTO>
+) -> Result<HttpResponse, HttpError> {
+    body.validate()
+        .map_err(|e| HttpError::bad_request(e.to_string()))?;
+
+    let user = app_state.db_client
+        .get_user(None, None, Some(&body.email), None)
+        .await
+        .map_err(|e| HttpError::server_error(e.to_string()))?.ok_or(HttpError::bad_request("Email no encontrado.".to_string()))?;
+
+    let verification_token = Uuid::new_v4().to_string();
+    let expires_at = Utc::now() + Duration::minutes(30);
+
+    let user_id = Uuid::parse_str(&user.id.to_string()).unwrap();
+
+    app_state.db_client
+        .add_verifed_token(user_id, &verification_token, expires_at)
+        .await
+        .map_err(|e| HttpError::server_error(e.to_string()))?;
+
+    let reset_link = format!("http://localhost:8000/reset-password?token={}", &verification_token);
+
+    let send_email_result = send_forgot_password_email(&user.email, &reset_link, &user.name).await;
+
+    if let Err(e) = send_email_result {
+        eprintln!("Fallo al enviar email de restablecimiento de contraseña: {:?}", e);
+        return Err(HttpError::server_error("No se pudo enviar el email de restablecimiento de contraseña.".to_string()));
+    }
+
+    Ok(HttpResponse::Ok().json(Response {
+        status: "success",
+        message: "Se ha enviado un enlace de restablecimiento de contraseña a su correo electrónico.".to_string()
+    }))
+}
+
+
+#[post("/reset-password")]
+pub async fn reset_password(app_state: Data<Arc<AppState>>, Json(body): Json<ResetPasswordRequestDTO>) -> Result<HttpResponse, HttpError> {
+    body.validate()
+        .map_err(|e| HttpError::bad_request(e.to_string()))?;
+
+    let user = app_state.db_client
+        .get_user(None, None, Some(&body.token), None)
+        .await
+        .map_err(|e| HttpError::server_error(e.to_string()))?.ok_or(HttpError::bad_request("Token inválido.".to_string()))?;
+
+    if let Some(expires_at) = user.token_expiry {
+        if Utc::now() > expires_at {
+            return Err(HttpError::bad_request("El token de restablecimiento de contraseña ha expirado.".to_string()));
+        }
+    } else {
+        return Err(HttpError::bad_request("Token inválido.".to_string()));
+    }
+
+    let user_id = Uuid::parse_str(&user.id.to_string()).unwrap();
+
+    let new_password_hash = hash_password(&body.new_password)
+        .map_err(|e| HttpError::server_error(e.to_string()))?;
+
+    app_state.db_client
+        .update_user_password(user_id.clone(), new_password_hash)
+        .await
+        .map_err(|e| HttpError::server_error(e.to_string()))?;
+
+    app_state.db_client
+        .verifed_token(&body.token)
+        .await
+        .map_err(|e| HttpError::server_error(e.to_string()))?;
+
+    Ok(HttpResponse::Ok().json(Response {
+        status: "success",
+        message: "Contraseña restablecida exitosamente.".to_string()
+    }))
+ 
 }
 
 /// Obtener perfil
@@ -128,7 +284,7 @@ pub async fn get_user_profile(req: HttpRequest) -> HttpResponse {
 //   Crear orden
 // ===================== //
 #[actix_web::get("/create-order")]
-async fn created_order(state: web::Data<AppState>) -> HttpResponse {
+async fn created_order(state: Data<AppState>) -> HttpResponse {
     let host_env = env::var("HOST").expect("HOST no está definido en .env");
 
     let body =
@@ -184,7 +340,7 @@ struct CaptureParams {
 }
 
 #[actix_web::get("/capture-order")]
-async fn capture_order(params: web::Query<CaptureParams>) -> HttpResponse {
+async fn capture_order(params: Query<CaptureParams>) -> HttpResponse {
     HttpResponse::Ok()
         .content_type(header::ContentType::html())
         .body(
@@ -201,7 +357,7 @@ struct CancelParams {
 }
 
 #[actix_web::get("/cancel-order")]
-async fn cancel_order(params: web::Query<CancelParams>) -> HttpResponse {
+async fn cancel_order(params: Query<CancelParams>) -> HttpResponse {
     HttpResponse::Ok()
         .content_type(header::ContentType::html())
         .body(format!("Orden cancelada. ¡Gracias por su visita! Token: {}", params.token))

@@ -1,19 +1,8 @@
-use bcrypt::{hash, verify, DEFAULT_COST};
 use jsonwebtoken::{encode, decode, Header, Validation, EncodingKey, DecodingKey};
 use serde::{Serialize, Deserialize};
 use std::fs;
 use chrono::{Utc, Duration};
 use jsonwebtoken::Algorithm::RS256;
-
-/// Hasear Contraseña
-pub fn hash_password(password: &str) -> String {
-    hash(password, DEFAULT_COST).expect("Error al hashear la contraseña")
-}
-
-/// Verificar Contraseña
-pub fn verify_password(password: &str, hash: &str) -> bool {
-    verify(password, hash).unwrap_or(false)
-}
 
 /// Datos dentro del token JWT
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -23,6 +12,7 @@ struct Claims {
 }
 
 /// Generar Token JWT de session
+#[allow(dead_code)]
 pub fn generate_jwt(user_id: &str) -> String {
     let private_key_pem = fs::read("private_key.pem").expect("Error leyendo private_key.pem");
     let expiration = Utc::now()

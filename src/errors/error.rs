@@ -2,6 +2,7 @@ use actix_web::{
     http::StatusCode,
     HttpResponse,
     Responder,
+    ResponseError,
 };
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -17,7 +18,7 @@ impl fmt::Display for ErrorResponse {
         write!(f, "{}", serde_json::to_string(&self).unwrap())
     }
 }
-
+#[allow(dead_code)]
 #[derive(Debug, PartialEq)]
 pub enum ErrorMessage {
     EmptyPassword,
@@ -67,6 +68,7 @@ pub struct HttpError {
 }
 
 impl HttpError {
+    #[allow(dead_code)]
     pub fn new(message: impl Into<String>, status: StatusCode) -> Self {
         HttpError {
             message: message.into(),
@@ -127,5 +129,17 @@ impl Responder for HttpError {
 
     fn respond_to(self, _req: &actix_web::HttpRequest) -> HttpResponse<Self::Body> {
         self.into_http_response()
+    }
+}
+
+impl ResponseError for HttpError {
+    fn error_response(&self) -> HttpResponse {
+        let status = match self.status {
+            StatusCode::BAD_REQUEST => StatusCode::BAD_REQUEST,
+            StatusCode::CONFLICT => StatusCode::CONFLICT,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+
+        HttpResponse::build(status).body(self.message.clone())
     }
 }

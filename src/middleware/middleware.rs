@@ -1,11 +1,11 @@
 use std::{rc::Rc, sync::Arc};
 use actix_web::{
-    dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform},
-    http::{header, StatusCode},
-    Error, HttpMessage,
+    Error, HttpMessage, HttpResponse, body::EitherBody, dev::{Service, ServiceRequest, ServiceResponse, Transform, forward_ready}, http::header
 };
-use futures::future::{ready, Ready, LocalBoxFuture};
+use futures::{FutureExt, future::{LocalBoxFuture, Ready, ready}};
 use uuid::Uuid;
+use std::pin::Pin;
+
 
 use crate::{
     auth::auth::verify_jwt,
@@ -32,6 +32,7 @@ impl AuthMiddlewareFactory {
         Self { app_state }
     }
 
+    #[allow(dead_code)]
     /// Middleware que también valida roles
     pub fn with_roles(app_state: Arc<AppState>) -> Self {
         Self { app_state }
@@ -141,28 +142,93 @@ where
 // ==================================
 // Middleware de chequeo de roles
 // ==================================
-pub async fn role_check(
-    req: ServiceRequest,
+#[derive(Clone)]
+pub struct RoleCheck {
     roles: Vec<UserRole>,
-) -> Result<ServiceRequest, actix_web::Error> {
-    {
-    let extensions = req.extensions();
-    let user_data = extensions
-        .get::<JWTAuthMiddleware>()
-        .ok_or_else(|| actix_web::error::ErrorUnauthorized("Usuario no autenticado"))?;
+}
 
-    if let Some(role) = &user_data.user.role {
-        if !roles.contains(role) {
-            let err = HttpError::new(
-                ErrorMessage::PermissionDenied.to_string(),
-                StatusCode::FORBIDDEN,
-            );
-            return Err(actix_web::error::ErrorForbidden(err.to_string()));
+impl RoleCheck {
+    pub fn new(roles: Vec<UserRole>) -> Self {
+        Self { roles }
+    }
+}
+
+impl<S, B> Transform<S, ServiceRequest> for RoleCheck
+where
+    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
+    B: 'static,
+{
+    type Response = ServiceResponse<EitherBody<B>>;
+    type Error = Error;
+    type Transform = RoleCheckMiddleware<S>;
+    type InitError = ();
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Transform, Self::InitError>>>>;
+
+    fn new_transform(&self, service: S) -> Self::Future {
+        let roles = self.roles.clone();
+        Box::pin(async move {
+            Ok(RoleCheckMiddleware {
+                service: Rc::new(service),
+                roles,
+            })
+        })
+    }
+}
+
+pub struct RoleCheckMiddleware<S> {
+    service: Rc<S>,
+    roles: Vec<UserRole>,
+}
+
+impl<S, B> Service<ServiceRequest> for RoleCheckMiddleware<S>
+where
+    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
+    B: 'static,
+{
+    type Response = ServiceResponse<EitherBody<B>>;
+    type Error = Error;
+    type Future = LocalBoxFuture<'static, Result<Self::Response, Self::Error>>;
+
+    forward_ready!(service);
+
+    fn call(&self, req: ServiceRequest) -> Self::Future {
+        let srv = self.service.clone();
+        let roles = self.roles.clone();
+
+        async move {
+            // Simulación: extracción de rol del usuario (por header, cookie o claims)
+            // En la práctica, podrías sacar esto del "extensions" o JWT.
+            let user_role = extract_user_role(&req);
+
+            // Verificación inline (reemplaza a role_check)
+            let authorized = roles.contains(&user_role);
+
+            if !authorized {
+                // Rechazar acceso
+                let (req, _) = req.into_parts();
+                let res = HttpResponse::Forbidden()
+                    .body("Permission Denied")
+                    .map_into_right_body();
+                return Ok(ServiceResponse::new(req, res));
+            }
+
+            // Continuar flujo normal
+            let res = srv.call(req).await?.map_into_left_body();
+            Ok(res)
+        }
+        .boxed_local()
+    }
+}
+
+// 🔹 Ejemplo básico de extracción de rol (puedes adaptarlo a tu JWT o base de datos)
+fn extract_user_role(req: &ServiceRequest) -> UserRole {
+    if let Some(hdr) = req.headers().get("x-user-role") {
+        match hdr.to_str().unwrap_or("") {
+            "Admin" => UserRole::Admin,
+            "User" => UserRole::User,
+            _ => UserRole::User,
         }
     } else {
-        let err = HttpError::new("El usuario no tiene rol asignado", StatusCode::FORBIDDEN);
-        return Err(actix_web::error::ErrorForbidden(err.to_string()));
+        UserRole::User
     }
-    }
-    Ok(req)
 }

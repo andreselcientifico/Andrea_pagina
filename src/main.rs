@@ -7,6 +7,7 @@ mod errors;
 mod db;
 mod utils;
 mod middleware;
+mod mail;
 
 use actix_web::{ web, App, HttpServer };
 use chrono::{ DateTime, Utc };
@@ -20,6 +21,7 @@ use sqlx::postgres::PgPoolOptions;
 use dotenvy;
 use actix_web::http::header::{ AUTHORIZATION, ACCEPT, CONTENT_TYPE };
 use middleware::middleware::AuthMiddlewareFactory;
+use crate::func::users::users_scope;
 
 
 //==================== //
@@ -80,7 +82,7 @@ async fn main() -> std::io::Result<()> {
 
     HttpServer::new(move || {
  
-
+        let app_state = Arc::new(state.clone());
         App::new()
             .wrap(
                 actix_cors::Cors::default()
@@ -97,6 +99,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(db.clone()))
             .service(func::handlers::register_user)
             .service(func::handlers::login_user)
+            .service(users_scope(app_state.clone()))
             .service(
             web::scope("/api")
                 .wrap(AuthMiddlewareFactory::new(Arc::new(state.clone())))
