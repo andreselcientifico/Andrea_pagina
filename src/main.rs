@@ -96,7 +96,6 @@ async fn main() -> std::io::Result<()> {
                 .max_age(3600)
             )
             .app_data(web::Data::new(state.clone()))
-            .app_data(web::Data::new(db.clone()))
             .service(func::handlers::register_user)
             .service(func::handlers::login_user)
             .service(users_scope(app_state.clone()))
