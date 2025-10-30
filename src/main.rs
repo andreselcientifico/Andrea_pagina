@@ -9,7 +9,7 @@ mod utils;
 mod middleware;
 mod mail;
 
-use actix_web::{ web, App, HttpServer };
+use actix_web::{ web,web::Data,  App, HttpServer };
 use chrono::{ DateTime, Utc };
 use openssl::ssl::{ SslAcceptor, SslFiletype, SslMethod };
 use config::config::Config;
@@ -22,6 +22,7 @@ use dotenvy;
 use actix_web::http::header::{ AUTHORIZATION, ACCEPT, CONTENT_TYPE };
 use middleware::middleware::AuthMiddlewareFactory;
 use crate::func::users::users_scope;
+use env_logger::Env; 
 
 
 //==================== //
@@ -53,6 +54,7 @@ impl CachedToken {
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     dotenvy::dotenv().expect("No se pudo cargar el archivo .env");
+    env_logger::Builder::from_env(Env::default().default_filter_or("debug")).init();
 
     let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
     builder.set_private_key_file("key.pem", SslFiletype::PEM).unwrap();
@@ -79,29 +81,33 @@ async fn main() -> std::io::Result<()> {
         token_cache: Arc::new(Mutex::new(None)),
         db_client: db.clone(),
     };
+     let app_state = Arc::new(state.clone());
+    println!("AppState registered: {:?}", Arc::strong_count(&app_state));
 
     HttpServer::new(move || {
  
-        let app_state = Arc::new(state.clone());
+       
         App::new()
             .wrap(
                 actix_cors::Cors::default()
-                .allowed_origin("http://localhost:3000")
-                .allowed_origin_fn(| origin, _req_head| {
-                    origin.as_bytes().ends_with(b"localhost:3000")
-                })
+                // .allowed_origin("http://localhost:8080")
+                // .allowed_origin_fn(| origin, _req_head| {
+                //     origin.as_bytes().ends_with(b"localhost:8080")
+                // })
                 .allowed_methods(vec!["GET", "POST", "PUT", "DELETE"])
                 .allowed_headers(vec![AUTHORIZATION, ACCEPT])
                 .allowed_header(CONTENT_TYPE)
+                .supports_credentials()
                 .max_age(3600)
             )
-            .app_data(web::Data::new(state.clone()))
+            .app_data(Data::new(app_state.clone()))
             .service(func::handlers::register_user)
             .service(func::handlers::login_user)
+            .service(func::handlers::verify_email)
             .service(users_scope(app_state.clone()))
             .service(
             web::scope("/api")
-                .wrap(AuthMiddlewareFactory::new(Arc::new(state.clone())))
+                .wrap(AuthMiddlewareFactory::new(app_state.clone()))
                 .service(func::handlers::get_user_profile)
                 .service(func::handlers::created_order)
                 .service(func::handlers::capture_order)
@@ -110,6 +116,6 @@ async fn main() -> std::io::Result<()> {
             
     })
         .workers(8)
-        .bind("127.0.0.1:8000")?
+        .bind_openssl("127.0.0.1:8000", builder)?
         .run().await
 }

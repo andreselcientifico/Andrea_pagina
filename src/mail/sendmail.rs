@@ -1,4 +1,4 @@
-use std::{env, fs};
+use std::{env};
 use lettre::{
     message::{header, SinglePart},
     transport::smtp::authentication::Credentials,
@@ -9,18 +9,45 @@ use lettre::{
 pub async fn send_email(
     to_email: &str,
     subject: &str,
-    template_path: &str,
+    body_template: &String,
     placeholders: &[(String, String)]
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let smtp_username = env::var("SMTP_USERNAME")?;
-    let smtp_password = env::var("SMTP_PASSWORD")?;
-    let smtp_server = env::var("SMTP_SERVER")?;
-    let smtp_port: u16 = env::var("SMTP_PORT")?.parse()?;
+     // Cargar variables de entorno
+    let smtp_username = match env::var("SMTP_USERNAME") {
+        Ok(val) => val,
+        Err(_) => {
+            eprintln!("❌ SMTP_USERNAME no está presente en el .env");
+            return Err("SMTP_USERNAME missing".into());
+        }
+    };
 
-    let mut html_template = fs::read_to_string(template_path)?;
+    let smtp_password = match env::var("SMTP_PASSWORD") {
+        Ok(val) => val,
+        Err(_) => {
+            eprintln!("❌ SMTP_PASSWORD no está presente en el .env");
+            return Err("SMTP_PASSWORD missing".into());
+        }
+    };
 
+    let smtp_server = match env::var("SMTP_SERVER") {
+        Ok(val) => val,
+        Err(_) => {
+            eprintln!("❌ SMTP_SERVER no está presente en el .env");
+            return Err("SMTP_SERVER missing".into());
+        }
+    };
+
+    let smtp_port: u16 = match env::var("SMTP_PORT") {
+        Ok(val) => val.parse().unwrap_or(587),
+        Err(_) => {
+            eprintln!("⚠️ SMTP_PORT no definido, usando 587 por defecto");
+            587
+        }
+    };
+
+    let mut body = body_template.to_string();
     for (key, value) in placeholders {
-        html_template = html_template.replace(key, value)
+        body = body.replace(key, value);
     }
 
     let email = Message::builder()
@@ -30,7 +57,7 @@ pub async fn send_email(
         .header(header::ContentType::TEXT_HTML)
         .singlepart(SinglePart::builder()
             .header(header::ContentType::TEXT_HTML)
-            .body(html_template)
+            .body(body)
         )?;
 
     let creds = Credentials::new(smtp_username.clone(), smtp_password.clone());
@@ -38,12 +65,10 @@ pub async fn send_email(
         .credentials(creds)
         .port(smtp_port)
         .build();
-    
-    let result = mailer.send(&email);
 
-    match result {
-        Ok(_) => println!("Email sent successfully!"),
-        Err(e) => println!("Failed to send email: {:?}", e),
+    match mailer.send(&email) {
+        Ok(_) => println!("✅ Email enviado correctamente!"),
+        Err(e) => println!("❌ Falló el envío de email: {:?}", e),
     }
 
     Ok(())

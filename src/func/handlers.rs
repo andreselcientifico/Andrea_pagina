@@ -1,5 +1,5 @@
 use actix_web::{ 
-    HttpMessage, HttpRequest, HttpResponse, cookie::Cookie, http::header, post, web::{ Data, Json, Query}
+    HttpMessage, HttpRequest, HttpResponse, cookie::Cookie, http::header, post, get, web::{ Data, Json, Query}
 };
 use std::sync::Arc;
 use validator::Validate;
@@ -64,6 +64,13 @@ pub async fn register_user(
     app_state: Data<Arc<AppState>>,
     Json(body): Json<RegisterDTO>
 ) -> Result<HttpResponse, HttpError> {
+
+    // ======== Depuración ========
+    println!("Handler `register_user` recibido AppState: {:p}", Arc::as_ptr(&app_state));
+    println!("Request body: {:?}", body);
+    println!("✅ Handler register_user recibió AppState con db_client: {:?}", app_state.db_client);
+    // =============================
+
     body.validate()
         .map_err(|e|  HttpError::bad_request(e.to_string()))?;
 
@@ -140,13 +147,13 @@ pub async fn login_user(app_state: Data<Arc<AppState>>, Json(body): Json<LoginDT
 }
 
 
-#[post("/verify")]
+#[get("api/auth/verify")]
 pub async fn verify_email(Query(query_params): Query<VerifyEmailQueryDTO>, app_state: Data<Arc<AppState>>) -> Result<HttpResponse, HttpError> {
     query_params.validate()
         .map_err(|e| HttpError::bad_request(e.to_string()))?;
 
     let user = app_state.db_client
-        .get_user(None, None, Some(&query_params.token), None)
+        .get_user(None, None, None,  Some(&query_params.token))
         .await
         .map_err(|e| HttpError::server_error(e.to_string()))?.ok_or(HttpError::unauthorized(ErrorMessage::InvalidToken.to_string()))?;
 
@@ -163,9 +170,7 @@ pub async fn verify_email(Query(query_params): Query<VerifyEmailQueryDTO>, app_s
         .await
         .map_err(|e| HttpError::server_error(e.to_string()))?;
 
-    let send_welcome_email_result = send_welcome_email(&user.email, &user.name).await;
-
-    if let Err(e) = send_welcome_email_result {
+    if let Err(e) = send_welcome_email(&user.email, &user.name).await {
         eprintln!("Fallo al enviar email de bienvenida: {:?}", e);
     }
 
