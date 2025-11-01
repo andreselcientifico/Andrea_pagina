@@ -89,7 +89,7 @@ async fn main() -> std::io::Result<()> {
        
         App::new()
             .wrap(
-                actix_cors::Cors::default()
+                actix_cors::Cors::permissive()
                 // .allowed_origin("http://localhost:8080")
                 // .allowed_origin_fn(| origin, _req_head| {
                 //     origin.as_bytes().ends_with(b"localhost:8080")
@@ -104,6 +104,7 @@ async fn main() -> std::io::Result<()> {
             .service(func::handlers::register_user)
             .service(func::handlers::login_user)
             .service(func::handlers::verify_email)
+            .service(func::handlers::logout_user)
             .service(users_scope(app_state.clone()))
             .service(
             web::scope("/api")
@@ -116,6 +117,7 @@ async fn main() -> std::io::Result<()> {
             
     })
         .workers(8)
-        .bind_openssl("127.0.0.1:8000", builder)?
+        // .bind_openssl("127.0.0.1:8000", builder)?
+        .bind("127.0.0.1:8000")?
         .run().await
 }

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use actix_web::{ 
-   HttpResponse, middleware::{ Logger}, web::{ Data, Json, Query,  resource, scope, get, put}
+   HttpResponse, Responder,middleware::{ Logger}, web::{ ReqData,Data, Json, Query,  resource, scope, get, put}
 };
 use validator::Validate;
 
@@ -35,15 +35,14 @@ pub fn users_scope(app_state: Arc<AppState>) -> impl actix_web::dev::HttpService
 
 
 pub async fn get_me(
-    user: Data<JWTAuthMiddleware>
-) -> Result<HttpResponse, HttpError> {
-    Ok(
-        HttpResponse::Ok().json(UserResponseDto {
-        status: "success".to_string(),
+    user: ReqData<JWTAuthMiddleware>
+) ->  impl Responder {
+    HttpResponse::Ok().json(UserResponseDto {
+        status: "success".into(),
         data: UserData {
             user: FilterUserDto::filter_user(&user.user),
         }
-    }))
+    })
 }
 
 pub async fn get_users(

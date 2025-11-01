@@ -118,7 +118,8 @@ pub async fn login_user(app_state: Data<Arc<AppState>>, Json(body): Json<LoginDT
     let user =  app_state.db_client
         .get_user(None, None, Some(&body.email), None)
         .await
-        .map_err(|e| HttpError::server_error(e.to_string()))?.ok_or(HttpError::bad_request(ErrorMessage::WrongCredentials.to_string()))?;
+        .map_err(|e| HttpError::server_error(e.to_string()))?
+        .ok_or_else(|| HttpError::bad_request("Usuario no encontrado".to_string()))?;
 
     if verify_password(&body.password, &user.password)
         .map_err(|_| HttpError::bad_request(ErrorMessage::WrongCredentials.to_string()))? {
@@ -136,7 +137,6 @@ pub async fn login_user(app_state: Data<Arc<AppState>>, Json(body): Json<LoginDT
                 .finish()
                 ).json(UserLoginResponseDto {
                     status: "success".to_string(),
-                    token,
                 }
             )
         )
@@ -144,6 +144,21 @@ pub async fn login_user(app_state: Data<Arc<AppState>>, Json(body): Json<LoginDT
     else {
         Err(HttpError::bad_request(ErrorMessage::WrongCredentials.to_string()))
     }
+}
+
+#[post("/logout")]
+pub async fn logout_user() -> HttpResponse {
+    HttpResponse::Ok()
+        .cookie(
+            Cookie::build("token", "")
+                .path("/")
+                .max_age(time::Duration::seconds(0))
+                .http_only(true)
+                .secure(true)
+                .same_site(actix_web::cookie::SameSite::None)
+                .finish()
+        )
+        .json(serde_json::json!({ "status": "success", "message": "Sesión cerrada" }))
 }
 
 
@@ -185,10 +200,10 @@ pub async fn verify_email(Query(query_params): Query<VerifyEmailQueryDTO>, app_s
                 .max_age(time::Duration::minutes(app_state.env.jwt_maxage * 60))
                 .http_only(true)
                 .secure(true) 
+                .same_site(actix_web::cookie::SameSite::None)
                 .finish()
                 ).json(UserLoginResponseDto {
                     status: "success".to_string(),
-                    token,
                 }
             )
         )

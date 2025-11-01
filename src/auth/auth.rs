@@ -31,7 +31,7 @@ pub fn generate_jwt(user_id: &str) -> String {
 
 /// Verificar y decodificar Token JWT
 pub fn verify_jwt(token: &str) -> Option<String> {
-    let public_key_pem = fs::read("public_key.pem").expect("Error leyendo public_key.pem");
+    let public_key_pem = fs::read("public.pem").expect("Error leyendo public_key.pem");
     match decode::<Claims>(
         token,
         &DecodingKey::from_rsa_pem(&public_key_pem).expect("Clave pública inválida"),
