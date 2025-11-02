@@ -9,7 +9,7 @@ mod utils;
 mod middleware;
 mod mail;
 
-use actix_web::{ web,web::Data,  App, HttpServer };
+use actix_web::{ web,web::Data,  App, HttpServer, HttpResponse };
 use chrono::{ DateTime, Utc };
 use openssl::ssl::{ SslAcceptor, SslFiletype, SslMethod };
 use config::config::Config;
@@ -22,7 +22,7 @@ use dotenvy;
 use actix_web::http::header::{ AUTHORIZATION, ACCEPT, CONTENT_TYPE };
 use middleware::middleware::AuthMiddlewareFactory;
 use crate::func::users::users_scope;
-use env_logger::Env; 
+// use env_logger::Env; 
 
 
 //==================== //
@@ -48,13 +48,18 @@ impl CachedToken {
     }
 }
 
+async fn ping() -> HttpResponse {
+    HttpResponse::Ok().json(serde_json::json!({ "status": "ok" }))
+}
+
+
 // ===================== //
 //        MAIN
 // ===================== //
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     dotenvy::dotenv().expect("No se pudo cargar el archivo .env");
-    env_logger::Builder::from_env(Env::default().default_filter_or("debug")).init();
+    // env_logger::Builder::from_env(Env::default().default_filter_or("debug")).init();
 
     let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
     builder.set_private_key_file("key.pem", SslFiletype::PEM).unwrap();
@@ -90,16 +95,18 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .wrap(
                 actix_cors::Cors::permissive()
-                // .allowed_origin("http://localhost:8080")
-                // .allowed_origin_fn(| origin, _req_head| {
-                //     origin.as_bytes().ends_with(b"localhost:8080")
-                // })
+                .allowed_origin("http://localhost:8080")
+                .allowed_origin("https://192.168.1.12:8080")
+                .allowed_origin_fn(| origin, _req_head| {
+                    origin.as_bytes().ends_with(b"localhost:8080")
+                })
                 .allowed_methods(vec!["GET", "POST", "PUT", "DELETE"])
                 .allowed_headers(vec![AUTHORIZATION, ACCEPT])
                 .allowed_header(CONTENT_TYPE)
                 .supports_credentials()
                 .max_age(3600)
             )
+            .route("/ping", web::get().to(ping))
             .app_data(Data::new(app_state.clone()))
             .service(func::handlers::register_user)
             .service(func::handlers::login_user)
@@ -117,7 +124,7 @@ async fn main() -> std::io::Result<()> {
             
     })
         .workers(8)
-        // .bind_openssl("127.0.0.1:8000", builder)?
-        .bind("127.0.0.1:8000")?
+        .bind_openssl("127.0.0.1:8000", builder)?
+        // .bind("127.0.0.1:8000")?
         .run().await
 }
