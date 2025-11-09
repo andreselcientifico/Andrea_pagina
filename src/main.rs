@@ -70,15 +70,13 @@ async fn main() -> std::io::Result<()> {
         .connect(&Config::init().database_url).await
     {
         Ok(pool) => {
-            println!("✅ Conectado a la base de datos");
             pool
         },
         Err(err) => {
-            eprintln!("❌ Error al conectar a la base de datos: {:?}", err);
-            return Err(std::io::Error::new(std::io::ErrorKind::Other, "Database connection failed"));
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, "Database connection failed {}".replace("{}", &err.to_string())));
         }
     };
-    let db = DBClient::new(pool);
+    let db: DBClient = DBClient::new(pool);
     
      let state = AppState {
         env: Config::init(),
@@ -87,8 +85,6 @@ async fn main() -> std::io::Result<()> {
         db_client: db.clone(),
     };
      let app_state = Arc::new(state.clone());
-    println!("AppState registered: {:?}", Arc::strong_count(&app_state));
-
     HttpServer::new(move || {
  
        

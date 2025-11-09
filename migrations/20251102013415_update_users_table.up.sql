@@ -26,8 +26,8 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-CREATE INDEX users_email_idx ON users(email);
-CREATE INDEX users_name_idx ON users(name);
+CREATE INDEX IF NOT EXISTS users_email_idx ON users(email);
+CREATE INDEX IF NOT EXISTS users_name_idx ON users(name);
 
 -- User settings
 CREATE TABLE user_settings (

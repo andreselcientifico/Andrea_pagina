@@ -64,13 +64,6 @@ pub async fn register_user(
     app_state: Data<Arc<AppState>>,
     Json(body): Json<RegisterDTO>
 ) -> Result<HttpResponse, HttpError> {
-
-    // ======== Depuración ========
-    println!("Handler `register_user` recibido AppState: {:p}", Arc::as_ptr(&app_state));
-    println!("Request body: {:?}", body);
-    println!("✅ Handler register_user recibió AppState con db_client: {:?}", app_state.db_client);
-    // =============================
-
     body.validate()
         .map_err(|e|  HttpError::bad_request(e.to_string()))?;
 
@@ -88,7 +81,7 @@ pub async fn register_user(
             let send_email_result = send_verification_email(&body.email, &body.name, &verification_token).await;
 
             if let Err(e) = send_email_result {
-                eprintln!("Fallo al enviar email de verificación: {:?}", e);
+               return Err(HttpError::server_error(format!("Ocurrio un error: {}", e)))
             }
             Ok(HttpResponse::Created().json(Response {
                 status: "success",
@@ -186,7 +179,7 @@ pub async fn verify_email(Query(query_params): Query<VerifyEmailQueryDTO>, app_s
         .map_err(|e| HttpError::server_error(e.to_string()))?;
 
     if let Err(e) = send_welcome_email(&user.email, &user.name).await {
-        eprintln!("Fallo al enviar email de bienvenida: {:?}", e);
+        return Err(HttpError::server_error(format!("Ocurrio un error: {}", e)))
     }
 
     let token = create_token_rsa(&user.id.to_string(), &app_state.env.encoding_key, app_state.env.jwt_maxage)
@@ -238,8 +231,7 @@ pub async fn forgot_password(
     let send_email_result = send_forgot_password_email(&user.email, &reset_link, &user.name).await;
 
     if let Err(e) = send_email_result {
-        eprintln!("Fallo al enviar email de restablecimiento de contraseña: {:?}", e);
-        return Err(HttpError::server_error("No se pudo enviar el email de restablecimiento de contraseña.".to_string()));
+        return Err(HttpError::server_error(format!("No se pudo enviar el email de restablecimiento de contraseña. Erro :{}", e)));
     }
 
     Ok(HttpResponse::Ok().json(Response {

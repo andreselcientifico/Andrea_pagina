@@ -16,7 +16,6 @@ pub async fn send_email(
     let smtp_username = match env::var("SMTP_USERNAME") {
         Ok(val) => val,
         Err(_) => {
-            eprintln!("❌ SMTP_USERNAME no está presente en el .env");
             return Err("SMTP_USERNAME missing".into());
         }
     };
@@ -24,7 +23,6 @@ pub async fn send_email(
     let smtp_password = match env::var("SMTP_PASSWORD") {
         Ok(val) => val,
         Err(_) => {
-            eprintln!("❌ SMTP_PASSWORD no está presente en el .env");
             return Err("SMTP_PASSWORD missing".into());
         }
     };
@@ -32,7 +30,6 @@ pub async fn send_email(
     let smtp_server = match env::var("SMTP_SERVER") {
         Ok(val) => val,
         Err(_) => {
-            eprintln!("❌ SMTP_SERVER no está presente en el .env");
             return Err("SMTP_SERVER missing".into());
         }
     };
@@ -40,7 +37,6 @@ pub async fn send_email(
     let smtp_port: u16 = match env::var("SMTP_PORT") {
         Ok(val) => val.parse().unwrap_or(587),
         Err(_) => {
-            eprintln!("⚠️ SMTP_PORT no definido, usando 587 por defecto");
             587
         }
     };
