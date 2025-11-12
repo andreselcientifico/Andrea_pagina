@@ -183,3 +183,16 @@ pub struct FullUserProfile {
     pub notifications: Vec<Notification>,
     pub subscriptions: Vec<Subscription>,
 }
+
+#[derive(Debug, Clone, sqlx::FromRow, Serialize, Deserialize)]
+pub struct Payment {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub course_id: Uuid,
+    pub amount: f64,
+    pub payment_method: String,
+    pub transaction_id: String,
+    pub status: String, // "pending", "completed", "failed"
+    pub created_at: DateTime<Utc>,
+    pub updated_at: Option<DateTime<Utc>>,
+}

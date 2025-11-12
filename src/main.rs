@@ -22,7 +22,7 @@ use dotenvy;
 use actix_web::http::header::{ AUTHORIZATION, ACCEPT, CONTENT_TYPE };
 use middleware::middleware::AuthMiddlewareFactory;
 use crate::func::users::users_scope;
-// use env_logger::Env; 
+use env_logger::Env; 
 
 
 //==================== //
@@ -59,7 +59,7 @@ async fn ping() -> HttpResponse {
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     dotenvy::dotenv().expect("No se pudo cargar el archivo .env");
-    // env_logger::Builder::from_env(Env::default().default_filter_or("debug")).init();
+    env_logger::Builder::from_env(Env::default().default_filter_or("debug")).init();
 
     let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
     builder.set_private_key_file("key.pem", SslFiletype::PEM).unwrap();
@@ -91,7 +91,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .wrap(
                 actix_cors::Cors::permissive()
-                .allowed_origin("http://localhost:8080")
+                .allowed_origin("https://localhost:8080")
                 .allowed_origin("https://192.168.1.12:8080")
                 .allowed_origin_fn(| origin, _req_head| {
                     origin.as_bytes().ends_with(b"localhost:8080")

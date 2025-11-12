@@ -33,6 +33,17 @@ pub enum ErrorMessage {
     TokenNotProvided,
     PermissionDenied,
     UserNotAuthenticated,
+    // Errores de cursos
+    CourseNotFound,
+    CourseAlreadyExists,
+    InvalidCourseData,
+    // Errores de pagos
+    PaymentNotFound,
+    PaymentFailed,
+    PaymentAlreadyProcessed,
+    InsufficientFunds,
+    CourseAlreadyPurchased,
+    InvalidPaymentMethod,
 }
 
 impl ToString for ErrorMessage {
@@ -57,6 +68,17 @@ impl ErrorMessage {
             ErrorMessage::TokenNotProvided => "You are not logged in, please provide a token".to_string(),
             ErrorMessage::PermissionDenied => "You are not allowed to perform this action".to_string(),
             ErrorMessage::UserNotAuthenticated => "Authentication required. Please log in.".to_string(),
+            // Errores de cursos
+            ErrorMessage::CourseNotFound => "The requested course was not found".to_string(),
+            ErrorMessage::CourseAlreadyExists => "A course with this name already exists".to_string(),
+            ErrorMessage::InvalidCourseData => "Invalid course data provided".to_string(),
+            // Errores de pagos
+            ErrorMessage::PaymentNotFound => "The requested payment was not found".to_string(),
+            ErrorMessage::PaymentFailed => "Payment processing failed".to_string(),
+            ErrorMessage::PaymentAlreadyProcessed => "This payment has already been processed".to_string(),
+            ErrorMessage::InsufficientFunds => "Insufficient funds for this transaction".to_string(),
+            ErrorMessage::CourseAlreadyPurchased => "You have already purchased this course".to_string(),
+            ErrorMessage::InvalidPaymentMethod => "Invalid payment method".to_string(),
         }
     }
 }
@@ -90,6 +112,14 @@ impl HttpError {
         }
     }
 
+    #[allow(dead_code)]
+    pub fn not_found(message: impl Into<String>) -> Self {
+        HttpError {
+            message: message.into(),
+            status: StatusCode::NOT_FOUND,
+        }
+    }
+
     pub fn unique_constraint_violation(message: impl Into<String>) -> Self {
         HttpError { 
             message: message.into(), 
@@ -101,6 +131,14 @@ impl HttpError {
         HttpError {
             message: message.into(),
             status: StatusCode::UNAUTHORIZED,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn forbidden(message: impl Into<String>) -> Self {
+        HttpError {
+            message: message.into(),
+            status: StatusCode::FORBIDDEN,
         }
     }
 

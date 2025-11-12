@@ -77,13 +77,22 @@ pub async fn register_user(
         .await;
 
     match result {
-        Ok(_user) => {
+        Ok(user) => {
             let send_email_result = send_verification_email(&body.email, &body.name, &verification_token).await;
 
             if let Err(e) = send_email_result {
                return Err(HttpError::server_error(format!("Ocurrio un error: {}", e)))
             }
-            Ok(HttpResponse::Created().json(Response {
+            let token = create_token_rsa(&user.id.to_string(), &app_state.env.encoding_key, app_state.env.jwt_maxage)
+            .map_err(|e| HttpError::server_error(e.to_string()))?;
+            Ok(HttpResponse::Created().cookie(
+                Cookie::build("token", token.clone())
+                .path("/")
+                .max_age(time::Duration::minutes(app_state.env.jwt_maxage * 60))
+                .http_only(true)
+                .secure(true) 
+                .finish()
+                ).json(Response {
                 status: "success",
                 message: "Usuario registrado exitosamente. Por favor, verifica tu email.".to_string()
             }))

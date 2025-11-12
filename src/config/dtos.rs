@@ -26,7 +26,7 @@ pub struct RegisterDTO {
     pub confirm_password: String,
 }
 
-#[derive(Validate, Default, Serialize, Deserialize, Debug, Clone)]
+#[derive(Validate, Debug, Default, Clone, Serialize, Deserialize)]
 pub struct LoginDTO {
     #[validate(
         length(min = 1, message = "El correo electrónico es requerido"),
@@ -177,4 +177,83 @@ pub struct ResetPasswordRequestDTO {
     )]
     #[serde(rename = "confirmNewPassword")]
     pub confirm_new_password: String,
+}
+
+#[allow(dead_code)]
+#[derive(Validate, Debug, Default, Clone, Serialize, Deserialize)]
+pub struct CreateCourseDTO {
+    #[validate(length(min = 1, message = "El nombre del curso es requerido"))]
+    pub name: String,
+    #[validate(length(min = 1, message = "La descripción es requerida"))]
+    pub description: String,
+    #[validate(range(min = 0.0, message = "El precio debe ser mayor a 0"))]
+    pub price: f64,
+}
+
+#[allow(dead_code)]
+#[derive(Validate, Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateCourseDTO {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub price: Option<f64>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CourseResponseDTO {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub price: f64,
+    #[serde(rename = "createdAt")]
+    pub created_at: DateTime<Utc>,
+}
+
+#[allow(dead_code)]
+#[derive(Validate, Debug, Clone, Serialize, Deserialize)]
+pub struct CreatePaymentDTO {
+    #[validate(length(min = 1, message = "El ID del curso es requerido"))]
+    pub course_id: String,
+    #[validate(length(min = 1, message = "El ID del usuario es requerido"))]
+    pub user_id: String,
+    #[validate(range(min = 0.0, message = "El monto debe ser mayor a 0"))]
+    pub amount: f64,
+    #[validate(length(min = 1, message = "El método de pago es requerido"))]
+    pub payment_method: String,
+    #[serde(default)]
+    pub transaction_id: Option<String>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PaymentResponseDTO {
+    pub id: String,
+    pub course_id: String,
+    pub user_id: String,
+    pub amount: f64,
+    pub status: String, // "pending", "completed", "failed"
+    pub payment_method: String,
+    pub transaction_id: Option<String>,
+    #[serde(rename = "createdAt")]
+    pub created_at: DateTime<Utc>,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: Option<DateTime<Utc>>,
+}
+
+#[allow(dead_code)]
+#[derive(Validate, Debug, Clone, Serialize, Deserialize)]
+pub struct VerifyPaymentDTO {
+    #[serde(default)]
+    pub payment_id: Option<String>,
+    #[serde(default)]
+    pub transaction_id: Option<String>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UserPaymentStatusDTO {
+    pub user_id: String,
+    pub course_id: String,
+    pub paid: bool,
+    pub payment_date: Option<DateTime<Utc>>,
 }
