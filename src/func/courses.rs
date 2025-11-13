@@ -2,7 +2,10 @@ use std::sync::Arc;
 use actix_web::{
     web::{self, Data, Json, Path, Query, scope},
     HttpResponse,
+    HttpRequest,
+    HttpMessage,
 };
+use lettre::transport::smtp::extension;
 use validator::Validate;
 use uuid::Uuid;
 use serde::Deserialize;
@@ -44,6 +47,7 @@ struct ListQuery {
     page: Option<u32>,
     limit: Option<usize>,
 }
+
 
 pub async fn get_courses(
     Query(q): Query<ListQuery>,

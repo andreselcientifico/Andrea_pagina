@@ -22,6 +22,8 @@ use dotenvy;
 use actix_web::http::header::{ AUTHORIZATION, ACCEPT, CONTENT_TYPE };
 use middleware::middleware::AuthMiddlewareFactory;
 use crate::func::users::users_scope;
+use crate::func::courses::courses_scope;
+use crate::func::payments::payments_scope;
 use env_logger::Env; 
 
 
@@ -109,6 +111,8 @@ async fn main() -> std::io::Result<()> {
             .service(func::handlers::verify_email)
             .service(func::handlers::logout_user)
             .service(users_scope(app_state.clone()))
+            .service(courses_scope(app_state.clone()))
+            .service(payments_scope(app_state.clone()))
             .service(
             web::scope("/api")
                 .wrap(AuthMiddlewareFactory::new(app_state.clone()))

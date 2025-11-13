@@ -1,9 +1,9 @@
 use core::str;
-use chrono::{ DateTime, Utc };
+use chrono::{ DateTime, Utc, NaiveDate };
 use serde::{ Deserialize, Serialize };
 use validator::Validate; 
 
-use crate::models::models::{ UserRole, User };
+use crate::models::models::{ UserRole, User, Course, Achievement };
 
 #[derive(Validate, Debug, Default, Clone, Serialize, Deserialize)]
 pub struct RegisterDTO {
@@ -52,6 +52,11 @@ pub struct FilterUserDto {
     pub id: Option<String>,
     pub name: Option<String>,
     pub email: Option<String>,
+    pub phone: Option<String>,
+    pub location: Option<String>,
+    pub bio: Option<String>,
+    #[serde(rename = "birthDate")]
+    pub birth_date: Option<NaiveDate>, 
     pub role: Option<UserRole>,
     pub verified: Option<bool>,
     #[serde(rename = "createdAt")]
@@ -66,6 +71,10 @@ impl FilterUserDto {
             id: Some(user.id.to_string()),
             name: Some(user.name.to_owned()),
             email: Some(user.email.to_owned()),
+            phone: user.phone.to_owned(),
+            location: user.location.to_owned(),
+            bio: user.bio.to_owned(),
+            birth_date: user.birth_date,
             role: Some(user.role.expect("Falta el role")),
             verified: Some(user.verified),
             created_at: user.created_at,
@@ -256,4 +265,77 @@ pub struct UserPaymentStatusDTO {
     pub course_id: String,
     pub paid: bool,
     pub payment_date: Option<DateTime<Utc>>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UserProfileResponse {
+    pub status: String,
+    pub data: UserProfileData,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UserProfileData {
+    pub user: FilterUserDto,
+    pub courses: Vec<FilterCourseDto>,
+    pub achievements: Vec<FilterAchievementDto>,
+}
+
+// Nuevos DTOs para courses y achievements (tipo "filter" como FilterUserDto)
+#[allow(dead_code)]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FilterCourseDto {
+    pub id: Option<String>,
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub price: Option<f64>,
+    #[serde(rename = "createdAt")]
+    pub created_at: Option<DateTime<Utc>>,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: Option<DateTime<Utc>>,
+}
+
+impl FilterCourseDto {
+    pub fn filter_course(course: &Course) -> Self {
+        FilterCourseDto {
+            id: Some(course.id.to_string()),
+            name: Some(course.name.to_owned()),
+            description: course.description.clone(),
+            price: Some(course.price),
+            created_at: Some(course.created_at),
+            updated_at: Some(course.updated_at),
+        }
+    }
+
+    pub fn filter_courses(courses: &[Course]) -> Vec<FilterCourseDto> {
+        courses.iter().map(|c| FilterCourseDto::filter_course(c)).collect()
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FilterAchievementDto {
+    pub id: Option<String>,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    #[serde(rename = "createdAt")]
+    pub created_at: Option<DateTime<Utc>>,
+    // añade otros campos que tenga tu modelo Achievement si los necesitas (p.ej. points)
+}
+
+impl FilterAchievementDto {
+    pub fn filter_achievement(a: &Achievement) -> Self {
+        FilterAchievementDto {
+            id: Some(a.id.to_string()),
+            // adapta names según tu modelo Achievement
+            title: Some(a.name.to_owned()),
+            description: a.description.clone(),
+            created_at: Some(a.created_at),
+        }
+    }
+
+    pub fn filter_achievements(list: &[Achievement]) -> Vec<FilterAchievementDto> {
+        list.iter().map(|a| FilterAchievementDto::filter_achievement(a)).collect()
+    }
 }

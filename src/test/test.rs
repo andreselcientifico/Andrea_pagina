@@ -28,6 +28,11 @@ mod tests {
             token_expiry: None,
             created_at: Some(Utc::now()),
             updated_at: Some(Utc::now()),
+            phone: None,
+            location: None,
+            bio: None,
+            birth_date: None,
+            profile_image_url: None,
         }
     }
 

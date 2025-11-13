@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Utc, NaiveDate};
 
 // ===================== //
 //    ROLES DE USUARIO
@@ -30,11 +30,19 @@ pub struct User {
     pub id: Uuid,
     pub name: String,
     pub email: String,
+    pub phone: Option<String>,
+    pub location: Option<String>,
+    pub bio: Option<String>,
+    #[serde(rename = "birthDate")]
+    pub birth_date: Option<NaiveDate>, 
     pub verified: bool,
     pub password: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub role: Option<UserRole>,
     pub verification_token: Option<String>,
     pub token_expiry: Option<DateTime<Utc>>,
+    #[serde(rename = "profileImageUrl", skip_serializing_if = "Option::is_none")]
+    pub profile_image_url: Option<String>,
     #[serde(rename = "createdAt")]
     pub created_at: Option<DateTime<Utc>>,
     #[serde(rename = "updatedAt")]
@@ -45,13 +53,21 @@ pub struct User {
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct UserSettings {
     pub id: Uuid,
+    #[serde(rename = "userId")]
     pub user_id: Uuid,
+    #[serde(rename = "emailNotifications")]
     pub email_notifications: bool,
+    #[serde(rename = "pushNotifications")]
     pub push_notifications: bool,
+    #[serde(rename = "courseReminders")]
     pub course_reminders: bool,
+    #[serde(rename = "newContent")]
     pub new_content: bool,
+    #[serde(rename = "twoFactorEnabled")]
     pub two_factor_enabled: bool,
+    #[serde(rename = "createdAt")]
     pub created_at: DateTime<Utc>,
+    #[serde(rename = "updatedAt")]
     pub updated_at: DateTime<Utc>,
 }
 
@@ -65,7 +81,9 @@ pub struct Course {
     pub name: String,
     pub description: Option<String>,
     pub price: f64,
+    #[serde(rename = "createdAt")]
     pub created_at: DateTime<Utc>,
+    #[serde(rename = "updatedAt")]
     pub updated_at: DateTime<Utc>,
 }
 
@@ -73,10 +91,17 @@ pub struct Course {
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct UserCourse {
     pub id: Uuid,
+    #[serde(rename = "userId")]
     pub user_id: Uuid,
+    #[serde(rename = "courseId")]
     pub course_id: Uuid,
+
+    #[serde(rename = "purchaseDate")]
     pub purchase_date: DateTime<Utc>,
+
+    #[serde(rename = "createdAt")]
     pub created_at: DateTime<Utc>,
+    #[serde(rename = "updatedAt")]
     pub updated_at: DateTime<Utc>,
 }
 
@@ -84,13 +109,24 @@ pub struct UserCourse {
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct CourseProgress {
     pub id: Uuid,
+    #[serde(rename = "userId")]
     pub user_id: Uuid,
+    #[serde(rename = "courseId")]
     pub course_id: Uuid,
+
+    #[serde(rename = "progressPercentage")]
     pub progress_percentage: f32,
+    #[serde(rename = "totalLessons")]
     pub total_lessons: Option<i32>,
+    #[serde(rename = "completedLessons")]
     pub completed_lessons: Option<i32>,
+
+    #[serde(rename = "lastAccessed")]
     pub last_accessed: DateTime<Utc>,
+
+    #[serde(rename = "createdAt")]
     pub created_at: DateTime<Utc>,
+    #[serde(rename = "updatedAt")]
     pub updated_at: DateTime<Utc>,
 }
 

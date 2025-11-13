@@ -3,8 +3,8 @@ use actix_web::{
 };
 use std::sync::Arc;
 use validator::Validate;
-use crate::{AppState, CachedToken, config::dtos::{ForgotPasswordRequestDTO, VerifyEmailQueryDTO}, db::db::UserExt};
-use serde::Deserialize;
+use crate::{AppState, CachedToken, config::dtos::{FilterCourseDto, ForgotPasswordRequestDTO, VerifyEmailQueryDTO}, db::db::{CourseExt, UserAchievementExt, UserExt}};
+use serde::{Deserialize};
 use std::env;
 use serde_json::json;
 use chrono::{ Duration, Utc };
@@ -14,7 +14,7 @@ use crate::utils::password::{hash_password, verify_password};
 use crate::utils::token::create_token_rsa;
 use crate::errors::error::{ ErrorMessage, HttpError };
 use crate::middleware::middleware::JWTAuthMiddleware;  
-use crate::config::dtos::{ RegisterDTO, LoginDTO, Response , UserLoginResponseDto, ResetPasswordRequestDTO };
+use crate::config::dtos::{ RegisterDTO, LoginDTO, Response , UserLoginResponseDto, ResetPasswordRequestDTO, FilterUserDto, UserProfileResponse, UserProfileData, FilterAchievementDto};
 
 
 // ===================== //
@@ -291,14 +291,43 @@ pub async fn reset_password(app_state: Data<Arc<AppState>>, Json(body): Json<Res
 }
 
 /// Obtener perfil
-#[post("/profile")]
-pub async fn get_user_profile(req: HttpRequest) -> HttpResponse {
-    let extensions = req.extensions();
-    let user_data = extensions
-        .get::<JWTAuthMiddleware>()
-        .expect("Usuario no autenticado");
-    
-    HttpResponse::Ok().json(&user_data.user)
+#[get("/profile")]
+pub async fn get_user_profile(req: HttpRequest, app_state: Data<Arc<AppState>>) -> Result<HttpResponse, HttpError> {
+    // Verifica si el middleware JWT añadió los datos del usuario autenticado
+    match req.extensions().get::<JWTAuthMiddleware>() {
+        Some(user_data) => {
+            let user_id = user_data.user.id;
+
+            // Obtener cursos y logros desde el cliente de base de datos en AppState
+            let courses = app_state.db_client
+                .get_user_courses(user_id)
+                .await
+                .map_err(|e| {
+                    eprintln!("Error al obtener cursos: {:?}", e);
+                    HttpError::server_error(e.to_string())
+                })?;
+
+            let achievements = app_state.db_client
+                .get_user_achievements(user_id)
+                .await
+                .map_err(|e| {
+                    eprintln!("Error al obtener logros: {:?}", e);
+                    HttpError::server_error(e.to_string())
+                })?;
+
+            let response = UserProfileResponse {
+                status: "success".into(),
+                data: UserProfileData {
+                    user: FilterUserDto::filter_user(&user_data.user),
+                    courses: FilterCourseDto::filter_courses(&courses),
+                    achievements: FilterAchievementDto::filter_achievements(&achievements),
+                },
+            };
+
+            Ok(HttpResponse::Ok().json(response))
+        }
+        None => Err(HttpError::unauthorized("Usuario no autenticado".to_string())),
+    }
 }
 
 // ===================== //
