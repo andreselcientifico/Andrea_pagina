@@ -282,6 +282,17 @@ pub struct UserProfileData {
     pub achievements: Vec<FilterAchievementDto>,
 }
 
+#[allow(dead_code)]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateUserProfileDto {
+    pub name: Option<String>,
+    pub phone: Option<String>,
+    pub location: Option<String>,
+    pub bio: Option<String>,
+    pub birth_date: Option<chrono::NaiveDate>,
+    pub profile_image_url: Option<String>,
+}
+
 // Nuevos DTOs para courses y achievements (tipo "filter" como FilterUserDto)
 #[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize)]

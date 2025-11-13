@@ -1,12 +1,10 @@
 use std::sync::Arc;
 use actix_web::{
     web::{self, Data, Json, Path, scope},
-    HttpResponse, middleware::Logger
+    HttpResponse,
 };
 use validator::Validate;
 use uuid::Uuid;
-use serde::Deserialize;
-use sqlx::Error as SqlxError;
 
 use crate::{
     AppState,

@@ -61,6 +61,17 @@ pub trait UserExt {
         password: String,
     ) -> Result<User, sqlx::Error>;
 
+    async fn update_user_profile(
+        &self,
+        user_id: Uuid,
+        name: Option<String>,
+        phone: Option<String>,
+        location: Option<String>,
+        bio: Option<String>,
+        birth_date: Option<chrono::NaiveDate>,
+        profile_image_url: Option<String>,
+    ) -> Result<User, sqlx::Error>;
+
     #[allow(dead_code)]
     async fn verifed_token(
         &self,
@@ -349,6 +360,60 @@ impl UserExt for DBClient {
         Ok(user)
     }
 
+    async fn update_user_profile(
+        &self,
+        user_id: Uuid,
+        name: Option<String>,
+        phone: Option<String>,
+        location: Option<String>,
+        bio: Option<String>,
+        birth_date: Option<chrono::NaiveDate>,
+        profile_image_url: Option<String>,
+    ) -> Result<User, sqlx::Error> {
+        let user = sqlx::query_as!(
+            User,
+            r#"
+            UPDATE users
+            SET
+                name = COALESCE($1, name),
+                phone = COALESCE($2, phone),
+                location = COALESCE($3, location),
+                bio = COALESCE($4, bio),
+                birth_date = COALESCE($5, birth_date),
+                profile_image_url = COALESCE($6, profile_image_url),
+                updated_at = NOW()
+            WHERE id = $7
+            RETURNING
+                id,
+                name,
+                email,
+                phone,
+                location,
+                bio,
+                birth_date,
+                password,
+                verified,
+                created_at,
+                updated_at,
+                verification_token,
+                token_expiry,
+                role as "role: UserRole",
+                profile_image_url
+            "#,
+            name,
+            phone,
+            location,
+            bio,
+            birth_date,
+            profile_image_url,
+            user_id
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(user)
+    }
+
     async fn update_user_password(
         &self,
         user_id: Uuid,
@@ -498,7 +563,13 @@ impl CourseExt for DBClient {
 
     async fn get_user_courses(&self, user_id: Uuid) -> Result<Vec<Course>, sqlx::Error> {
         let courses = sqlx::query_as::<_, Course>(
-            "SELECT * FROM courses WHERE user_id = $1 ORDER BY created_at DESC"
+            r#"
+            SELECT c.*
+            FROM courses c
+            INNER JOIN user_courses uc ON uc.course_id = c.id
+            WHERE uc.user_id = $1
+            ORDER BY c.created_at DESC
+            "#
         )
         .bind(user_id)
         .fetch_all(&self.pool)
@@ -909,8 +980,8 @@ impl UserAchievementExt for DBClient {
                 a.description,
                 a.icon,
                 a.created_at
-            FROM achievements a
-            INNER JOIN user_achievements ua 
+            FROM achievement a
+            INNER JOIN user_achievement ua 
                 ON ua.achievement_id = a.id
             WHERE ua.user_id = $1
             AND ua.earned = TRUE

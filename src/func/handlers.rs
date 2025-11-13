@@ -1,5 +1,5 @@
 use actix_web::{ 
-    HttpMessage, HttpRequest, HttpResponse, cookie::Cookie, http::header, post, get, web::{ Data, Json, Query}
+    HttpMessage, HttpRequest, HttpResponse, cookie::Cookie, http::header, post, get, put, web::{ Data, Json, Query}
 };
 use std::sync::Arc;
 use validator::Validate;
@@ -14,7 +14,7 @@ use crate::utils::password::{hash_password, verify_password};
 use crate::utils::token::create_token_rsa;
 use crate::errors::error::{ ErrorMessage, HttpError };
 use crate::middleware::middleware::JWTAuthMiddleware;  
-use crate::config::dtos::{ RegisterDTO, LoginDTO, Response , UserLoginResponseDto, ResetPasswordRequestDTO, FilterUserDto, UserProfileResponse, UserProfileData, FilterAchievementDto};
+use crate::config::dtos::{ RegisterDTO, LoginDTO, Response , UserLoginResponseDto, ResetPasswordRequestDTO, FilterUserDto, UserProfileResponse, UserProfileData, FilterAchievementDto, UpdateUserProfileDto };
 
 
 // ===================== //
@@ -325,6 +325,35 @@ pub async fn get_user_profile(req: HttpRequest, app_state: Data<Arc<AppState>>) 
             };
 
             Ok(HttpResponse::Ok().json(response))
+        }
+        None => Err(HttpError::unauthorized("Usuario no autenticado".to_string())),
+    }
+}
+
+#[put("/users/profile")]
+pub async fn update_user_profile(
+    req: HttpRequest,
+    app_state: Data<Arc<AppState>>,
+    body: Json<UpdateUserProfileDto>,
+) -> Result<HttpResponse, HttpError> {
+    match req.extensions().get::<JWTAuthMiddleware>() {
+        Some(user_data) => {
+            let user_id = user_data.user.id;
+
+            let updated_user = app_state.db_client
+                .update_user_profile(
+                    user_id,
+                    body.name.clone(),
+                    body.phone.clone(),
+                    body.location.clone(),
+                    body.bio.clone(),
+                    body.birth_date,
+                    body.profile_image_url.clone(),
+                )
+                .await
+                .map_err(|e| HttpError::server_error(e.to_string()))?;
+
+            Ok(HttpResponse::Ok().json(FilterUserDto::filter_user(&updated_user)))
         }
         None => Err(HttpError::unauthorized("Usuario no autenticado".to_string())),
     }
