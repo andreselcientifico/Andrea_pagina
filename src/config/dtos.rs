@@ -189,14 +189,52 @@ pub struct ResetPasswordRequestDTO {
 }
 
 #[allow(dead_code)]
-#[derive(Validate, Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Validate, Debug, Clone, Serialize, Deserialize)]
 pub struct CreateCourseDTO {
-    #[validate(length(min = 1, message = "El nombre del curso es requerido"))]
-    pub name: String,
-    #[validate(length(min = 1, message = "La descripción es requerida"))]
+    #[validate(length(min = 1, message = "El título del curso es requerido"))]
+    pub title: String,
+
+    #[validate(length(min = 1, message = "La descripción corta es requerida"))]
     pub description: String,
+
+    pub long_description: Option<String>,
+
+    #[validate(length(min = 1, message = "El nivel es requerido"))]
+    pub level: String, // "básico" | "intermedio" | "avanzado"
+
     #[validate(range(min = 0.0, message = "El precio debe ser mayor a 0"))]
     pub price: f64,
+
+    pub duration: Option<String>, // ej: "4 semanas"
+
+    pub students: Option<i32>, // se puede calcular por defecto
+
+    pub rating: Option<f32>, // calificación inicial, por defecto 5.0
+
+    pub image: Option<String>, // URL de imagen
+
+    #[validate(length(min = 1, message = "La categoría es requerida"))]
+    pub category: String, // "básico" | "premium"
+
+    #[serde(default)]
+    pub features: Option<Vec<String>>, // JSONB -> Vec<String>
+
+    #[serde(default)]
+    pub videos: Vec<CreateVideoDTO>, // array de videos
+}
+
+#[allow(dead_code)]
+#[derive(Validate, Debug, Clone, Serialize, Deserialize)]
+pub struct CreateVideoDTO {
+    #[validate(length(min = 1, message = "El título del video es requerido"))]
+    pub title: String,
+
+    #[validate(length(min = 1, message = "La URL del video es requerida"))]
+    pub url: String,
+
+    pub duration: Option<String>, // ej: "15:30"
+
+    pub order: Option<i32>, // se puede asignar automáticamente si no viene
 }
 
 #[allow(dead_code)]
@@ -298,9 +336,17 @@ pub struct UpdateUserProfileDto {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FilterCourseDto {
     pub id: Option<String>,
-    pub name: Option<String>,
+    pub title: Option<String>,
     pub description: Option<String>,
+    pub long_description: Option<String>,
     pub price: Option<f64>,
+    pub level: Option<String>,
+    pub duration: Option<String>,
+    pub students: Option<i32>,
+    pub rating: Option<f32>,
+    pub image: Option<String>,
+    pub category: Option<String>,
+    pub features: Option<Vec<String>>, // JSONB -> Vec<String>
     #[serde(rename = "createdAt")]
     pub created_at: Option<DateTime<Utc>>,
     #[serde(rename = "updatedAt")]
@@ -309,11 +355,22 @@ pub struct FilterCourseDto {
 
 impl FilterCourseDto {
     pub fn filter_course(course: &Course) -> Self {
+        let features: Option<Vec<String>> = course.features.as_ref().and_then(|v| {
+            serde_json::from_value(v.clone()).ok()
+        });
         FilterCourseDto {
             id: Some(course.id.to_string()),
-            name: Some(course.name.to_owned()),
-            description: course.description.clone(),
+            title: Some(course.title.to_owned()),
+            description: Some(course.description.to_owned()),
+            long_description: course.long_description.clone(),
             price: Some(course.price),
+            level: Some(course.level.clone()),
+            duration: course.duration.clone(),
+            students: Some(course.students),
+            rating: Some(course.rating),
+            image: course.image.clone(),
+            category: Some(course.category.clone()),
+            features, // ya convertido a Option<Vec<String>>
             created_at: Some(course.created_at),
             updated_at: Some(course.updated_at),
         }

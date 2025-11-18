@@ -3,7 +3,7 @@ use chrono::{DateTime, Utc};
 use sqlx::{Pool, Postgres};
 use uuid::Uuid;
 
-use crate::models::models::{User, UserRole, Course, Payment, Achievement, UserAchievement};
+use crate::{config::dtos::CreateCourseDTO, models::models::{Achievement, Course, Payment, User, UserAchievement, UserRole}};
 
 #[derive(Debug, Clone)]
 pub struct DBClient {
@@ -494,11 +494,9 @@ impl UserExt for DBClient {
 
 #[async_trait]
 pub trait CourseExt {
-    async fn create_course<T: Into<String> + Send>(
+    async fn create_course(
         &self,
-        name: T,
-        description: T,
-        price: f64,
+        dto: CreateCourseDTO,
     ) -> Result<Course, sqlx::Error>;
 
     async fn get_course(&self, course_id: Uuid) -> Result<Option<Course>, sqlx::Error>;
@@ -521,32 +519,67 @@ pub trait CourseExt {
 
     async fn delete_course(&self, course_id: Uuid) -> Result<(), sqlx::Error>;
 
+    #[allow(dead_code)]
     async fn get_course_count(&self) -> Result<i64, sqlx::Error>;
 }
 
 #[async_trait]
 impl CourseExt for DBClient {
-    async fn create_course<T: Into<String> + Send>(
+    async fn create_course(
         &self,
-        name: T,
-        description: T,
-        price: f64,
+        dto: CreateCourseDTO,
     ) -> Result<Course, sqlx::Error> {
         let id = Uuid::new_v4();
-        let now = Utc::now();
-        
+        let now = Utc::now().naive_utc();
+
+        // Insertar el curso
         let course = sqlx::query_as::<_, Course>(
-            r#"INSERT INTO courses (id, name, description, price, created_at) 
-               VALUES ($1, $2, $3, $4, $5) RETURNING id, name, description, price, created_at, updated_at"#,
+            r#"
+            INSERT INTO courses
+                (id, title, description, long_description, level, price, duration, students, rating, image, category, features, created_at, updated_at)
+            VALUES
+                ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+            RETURNING *
+            "#
         )
         .bind(id)
-        .bind(name.into())
-        .bind(description.into())
-        .bind(price)
+        .bind(dto.title)
+        .bind(dto.description)
+        .bind(dto.long_description)
+        .bind(dto.level)
+        .bind(dto.price)
+        .bind(dto.duration)
+        .bind(0)        // students inicial
+        .bind(5.0)      // rating inicial
+        .bind(dto.image)
+        .bind(dto.category)
+        .bind(dto.features)
+        .bind(now)
         .bind(now)
         .fetch_one(&self.pool)
         .await?;
-        
+
+        // Insertar los videos asociados
+        for (idx, video) in dto.videos.into_iter().enumerate() {
+            let video_id = Uuid::new_v4();
+            sqlx::query!(
+                r#"
+                INSERT INTO videos (id, course_id, "order", title, url, duration, created_at, updated_at)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+                "#,
+                video_id,
+                id,
+                video.order.unwrap_or((idx + 1) as i32),
+                video.title,
+                video.url,
+                video.duration,
+                now,
+                now
+            )
+            .execute(&self.pool)
+            .await?;
+        }
+
         Ok(course)
     }
 
@@ -657,6 +690,7 @@ pub trait PaymentExt {
 
     async fn get_user_payments(&self, user_id: Uuid) -> Result<Vec<Payment>, sqlx::Error>;
 
+    #[allow(dead_code)]
     async fn get_course_payments(&self, course_id: Uuid) -> Result<Vec<Payment>, sqlx::Error>;
 
     async fn update_payment_status(
@@ -671,6 +705,7 @@ pub trait PaymentExt {
         course_id: Uuid,
     ) -> Result<Option<Payment>, sqlx::Error>;
 
+    #[allow(dead_code)]
     async fn get_payment_count(&self) -> Result<i64, sqlx::Error>;
 }
 
@@ -787,6 +822,7 @@ impl PaymentExt for DBClient {
     }
 }
 
+#[allow(dead_code)]
 #[async_trait]
 pub trait AchievementExt {
     /// Crea un nuevo logro.
@@ -816,6 +852,7 @@ pub trait AchievementExt {
 #[async_trait]
 pub trait UserAchievementExt {
     /// Asigna un logro a un usuario (sin marcarlo como ganado aún).
+    #[allow(dead_code)]
     async fn assign_achievement_to_user(
         &self,
         user_id: Uuid,
@@ -823,6 +860,7 @@ pub trait UserAchievementExt {
     ) -> Result<UserAchievement, sqlx::Error>;
 
     /// Marca un logro como ganado.
+    #[allow(dead_code)]
     async fn earn_achievement(
         &self,
         user_id: Uuid,
@@ -836,6 +874,7 @@ pub trait UserAchievementExt {
     ) -> Result<Vec<Achievement>, sqlx::Error>;
 
     /// Verifica si un usuario ya ha ganado un logro específico.
+    #[allow(dead_code)]
     async fn has_user_earned(
         &self,
         user_id: Uuid,

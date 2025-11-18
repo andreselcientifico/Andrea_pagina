@@ -78,12 +78,18 @@ pub struct UserSettings {
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Course {
     pub id: Uuid,
-    pub name: String,
-    pub description: Option<String>,
+    pub title: String,                        // antes: name
+    pub description: String,                  // descripción corta, obligatoria
+    pub long_description: Option<String>,    // descripción detallada
+    pub level: String,                        // "básico" | "intermedio" | "avanzado"
     pub price: f64,
-    #[serde(rename = "createdAt")]
+    pub duration: Option<String>,             // ej: "4 semanas"
+    pub students: i32,                        // cantidad de estudiantes
+    pub rating: f32,                          // calificación promedio
+    pub image: Option<String>,                // URL de la imagen
+    pub category: String,                     // "básico" | "premium"
+    pub features: Option<serde_json::Value>,  // array JSON de strings
     pub created_at: DateTime<Utc>,
-    #[serde(rename = "updatedAt")]
     pub updated_at: DateTime<Utc>,
 }
 

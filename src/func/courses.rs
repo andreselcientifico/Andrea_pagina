@@ -87,7 +87,7 @@ pub async fn create_course(
     body.validate().map_err(|e| HttpError::bad_request(e.to_string()))?;
 
     let course = app_state.db_client
-        .create_course(body.name, body.description, body.price)
+        .create_course(body)
         .await
         .map_err(|e| {
             let s = e.to_string();
