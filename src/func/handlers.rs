@@ -1,9 +1,9 @@
 use actix_web::{ 
-    HttpMessage, HttpRequest, HttpResponse, cookie::Cookie, http::header, post, get, put, web::{ Data, Json, Query}
+    HttpMessage, HttpRequest, HttpResponse, cookie::Cookie, http::header,post,put,get, web::{ Data, Json, Query}
 };
 use std::sync::Arc;
 use validator::Validate;
-use crate::{AppState, CachedToken, config::dtos::{FilterCourseDto, ForgotPasswordRequestDTO, VerifyEmailQueryDTO}, db::db::{CourseExt, UserAchievementExt, UserExt}};
+use crate::{AppState, CachedToken, config::dtos::{CreateCourseDTO, FilterCourseDto, ForgotPasswordRequestDTO, VerifyEmailQueryDTO}, db::db::{CourseExt, UserAchievementExt, UserExt}};
 use serde::{Deserialize};
 use std::env;
 use serde_json::json;
@@ -164,7 +164,7 @@ pub async fn logout_user() -> HttpResponse {
 }
 
 
-#[get("api/auth/verify")]
+#[get("/api/auth/verify")]
 pub async fn verify_email(Query(query_params): Query<VerifyEmailQueryDTO>, app_state: Data<Arc<AppState>>) -> Result<HttpResponse, HttpError> {
     query_params.validate()
         .map_err(|e| HttpError::bad_request(e.to_string()))?;
@@ -362,7 +362,7 @@ pub async fn update_user_profile(
 // ===================== //
 //   Crear orden
 // ===================== //
-#[actix_web::get("/create-order")]
+#[post("/create-order")]
 async fn created_order(state: Data<AppState>) -> HttpResponse {
     let host_env = env::var("HOST").expect("HOST no está definido en .env");
 
@@ -418,7 +418,7 @@ struct CaptureParams {
     token: String,
 }
 
-#[actix_web::get("/capture-order")]
+#[post("/capture-order")]
 async fn capture_order(params: Query<CaptureParams>) -> HttpResponse {
     HttpResponse::Ok()
         .content_type(header::ContentType::html())
@@ -435,9 +435,39 @@ struct CancelParams {
     token: String,
 }
 
-#[actix_web::get("/cancel-order")]
+#[post("/cancel-order")]
 async fn cancel_order(params: Query<CancelParams>) -> HttpResponse {
     HttpResponse::Ok()
         .content_type(header::ContentType::html())
         .body(format!("Orden cancelada. ¡Gracias por su visita! Token: {}", params.token))
+}
+
+// ===================== //
+//   Crear curso
+// ===================== //
+#[post("/courses")]
+async fn create_course(
+    req: HttpRequest,
+    app_state: Data<Arc<AppState>>,
+    Json(body): Json<CreateCourseDTO>,
+) -> Result<HttpResponse, HttpError> {
+    body.validate()
+        .map_err(|e| HttpError::bad_request(e.to_string()))?;
+    println!("Extensions: {:?}", req.extensions());
+
+    match req.extensions().get::<JWTAuthMiddleware>() {
+        Some(user_data) => {
+            if user_data.user.role != Some(crate::models::models::UserRole::Admin) {
+                return Err(HttpError::forbidden("Solo los administradores pueden crear cursos".to_string()));
+            }
+
+            let course = app_state.db_client
+                .create_course(body)
+                .await
+                .map_err(|e| HttpError::server_error(e.to_string()))?;
+
+            Ok(HttpResponse::Created().json(FilterCourseDto::filter_course(&course)))
+        }
+        None => Err(HttpError::unauthorized("Usuario no autenticado".to_string())),
+    }
 }

@@ -512,7 +512,7 @@ pub trait CourseExt {
     async fn update_course(
         &self,
         course_id: Uuid,
-        name: Option<String>,
+        title: Option<String>,
         description: Option<String>,
         price: Option<f64>,
     ) -> Result<Course, sqlx::Error>;
@@ -532,6 +532,9 @@ impl CourseExt for DBClient {
         let id = Uuid::new_v4();
         let now = Utc::now().naive_utc();
 
+        // Convertir features a JSON
+        let features_json = dto.features.map(|f| serde_json::to_value(f).unwrap_or(serde_json::Value::Null));
+
         // Insertar el curso
         let course = sqlx::query_as::<_, Course>(
             r#"
@@ -549,20 +552,20 @@ impl CourseExt for DBClient {
         .bind(dto.level)
         .bind(dto.price)
         .bind(dto.duration)
-        .bind(0)        // students inicial
-        .bind(5.0)      // rating inicial
+        .bind(dto.students.unwrap_or(0))        // students inicial
+        .bind(dto.rating.unwrap_or(5.0))        // rating inicial
         .bind(dto.image)
         .bind(dto.category)
-        .bind(dto.features)
+        .bind(features_json)
         .bind(now)
         .bind(now)
         .fetch_one(&self.pool)
         .await?;
 
-        // Insertar los videos asociados
+        // Insertar los videos asociados si existen
         for (idx, video) in dto.videos.into_iter().enumerate() {
             let video_id = Uuid::new_v4();
-            sqlx::query!(
+            let _ = sqlx::query!(
                 r#"
                 INSERT INTO videos (id, course_id, "order", title, url, duration, created_at, updated_at)
                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
@@ -577,7 +580,7 @@ impl CourseExt for DBClient {
                 now
             )
             .execute(&self.pool)
-            .await?;
+            .await;
         }
 
         Ok(course)
@@ -585,7 +588,7 @@ impl CourseExt for DBClient {
 
     async fn get_course(&self, course_id: Uuid) -> Result<Option<Course>, sqlx::Error> {
         let course = sqlx::query_as::<_, Course>(
-            r#"SELECT id, name, description, price, created_at, updated_at FROM courses WHERE id = $1"#,
+            r#"SELECT * FROM courses WHERE id = $1"#,
         )
         .bind(course_id)
         .fetch_optional(&self.pool)
@@ -619,7 +622,7 @@ impl CourseExt for DBClient {
         let offset = ((page - 1) * limit as u32) as i64;
         
         let courses = sqlx::query_as::<_, Course>(
-            r#"SELECT id, name, description, price, created_at, updated_at FROM courses 
+            r#"SELECT * FROM courses 
                ORDER BY created_at DESC LIMIT $1 OFFSET $2"#,
         )
         .bind(limit as i64)
@@ -633,21 +636,21 @@ impl CourseExt for DBClient {
     async fn update_course(
         &self,
         course_id: Uuid,
-        name: Option<String>,
+        title: Option<String>,
         description: Option<String>,
         price: Option<f64>,
     ) -> Result<Course, sqlx::Error> {
         let course = sqlx::query_as::<_, Course>(
             r#"UPDATE courses 
-               SET name = COALESCE($2, name), 
+               SET title = COALESCE($2, title), 
                    description = COALESCE($3, description), 
                    price = COALESCE($4, price), 
                    updated_at = $5 
                WHERE id = $1 
-               RETURNING id, name, description, price, created_at, updated_at"#,
+               RETURNING *"#,
         )
         .bind(course_id)
-        .bind(name)
+        .bind(title)
         .bind(description)
         .bind(price)
         .bind(Utc::now())

@@ -190,6 +190,7 @@ pub struct ResetPasswordRequestDTO {
 
 #[allow(dead_code)]
 #[derive(Validate, Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateCourseDTO {
     #[validate(length(min = 1, message = "El título del curso es requerido"))]
     pub title: String,
