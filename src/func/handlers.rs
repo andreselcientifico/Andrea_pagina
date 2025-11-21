@@ -3,7 +3,7 @@ use actix_web::{
 };
 use std::sync::Arc;
 use validator::Validate;
-use crate::{AppState, CachedToken, config::dtos::{CreateCourseDTO, FilterCourseDto, ForgotPasswordRequestDTO, VerifyEmailQueryDTO}, db::db::{CourseExt, UserAchievementExt, UserExt}};
+use crate::{AppState, CachedToken, config::dtos::{FilterCourseDto, ForgotPasswordRequestDTO, VerifyEmailQueryDTO}, db::db::{CourseExt, UserAchievementExt, UserExt}};
 use serde::{Deserialize};
 use std::env;
 use serde_json::json;
@@ -73,7 +73,7 @@ pub async fn register_user(
         .map_err(|e| HttpError::server_error(e.to_string()))?;
 
     let result = app_state.db_client
-        .save_user(&body.name, &body.email, &password_hash, &verification_token, Some(expires_at))
+        .save_user(&body.name, &body.email, &password_hash, &verification_token, Some(expires_at), None)
         .await;
 
     match result {
@@ -83,7 +83,7 @@ pub async fn register_user(
             if let Err(e) = send_email_result {
                return Err(HttpError::server_error(format!("Ocurrio un error: {}", e)))
             }
-            let token = create_token_rsa(&user.id.to_string(), &app_state.env.encoding_key, app_state.env.jwt_maxage)
+            let token = create_token_rsa(&user.id.to_string(), user.role, &app_state.env.encoding_key, app_state.env.jwt_maxage)
             .map_err(|e| HttpError::server_error(e.to_string()))?;
             Ok(HttpResponse::Created().cookie(
                 Cookie::build("token", token.clone())
@@ -125,7 +125,7 @@ pub async fn login_user(app_state: Data<Arc<AppState>>, Json(body): Json<LoginDT
 
     if verify_password(&body.password, &user.password)
         .map_err(|_| HttpError::bad_request(ErrorMessage::WrongCredentials.to_string()))? {
-        let token = create_token_rsa(&user.id.to_string(), &app_state.env.encoding_key, app_state.env.jwt_maxage)
+        let token = create_token_rsa(&user.id.to_string(), user.role, &app_state.env.encoding_key, app_state.env.jwt_maxage)
             .map_err(|e| HttpError::server_error(e.to_string()))?;
 
         Ok(
@@ -191,7 +191,7 @@ pub async fn verify_email(Query(query_params): Query<VerifyEmailQueryDTO>, app_s
         return Err(HttpError::server_error(format!("Ocurrio un error: {}", e)))
     }
 
-    let token = create_token_rsa(&user.id.to_string(), &app_state.env.encoding_key, app_state.env.jwt_maxage)
+    let token = create_token_rsa(&user.id.to_string(), user.role, &app_state.env.encoding_key, app_state.env.jwt_maxage)
         .map_err(|e| HttpError::server_error(e.to_string()))?;
 
     Ok(
@@ -440,34 +440,4 @@ async fn cancel_order(params: Query<CancelParams>) -> HttpResponse {
     HttpResponse::Ok()
         .content_type(header::ContentType::html())
         .body(format!("Orden cancelada. ¡Gracias por su visita! Token: {}", params.token))
-}
-
-// ===================== //
-//   Crear curso
-// ===================== //
-#[post("/courses")]
-async fn create_course(
-    req: HttpRequest,
-    app_state: Data<Arc<AppState>>,
-    Json(body): Json<CreateCourseDTO>,
-) -> Result<HttpResponse, HttpError> {
-    body.validate()
-        .map_err(|e| HttpError::bad_request(e.to_string()))?;
-    println!("Extensions: {:?}", req.extensions());
-
-    match req.extensions().get::<JWTAuthMiddleware>() {
-        Some(user_data) => {
-            if user_data.user.role != Some(crate::models::models::UserRole::Admin) {
-                return Err(HttpError::forbidden("Solo los administradores pueden crear cursos".to_string()));
-            }
-
-            let course = app_state.db_client
-                .create_course(body)
-                .await
-                .map_err(|e| HttpError::server_error(e.to_string()))?;
-
-            Ok(HttpResponse::Created().json(FilterCourseDto::filter_course(&course)))
-        }
-        None => Err(HttpError::unauthorized("Usuario no autenticado".to_string())),
-    }
 }

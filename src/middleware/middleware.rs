@@ -8,11 +8,7 @@ use std::pin::Pin;
 
 
 use crate::{
-    auth::auth::verify_jwt,
-    db::db::UserExt,
-    errors::error::{ErrorMessage, HttpError},
-    models::models::{User, UserRole},
-    AppState,
+    AppState, auth::auth::verify_jwt, db::db::UserExt, errors::error::{ErrorMessage, HttpError}, models::models::{User, UserRole}, utils::token::decode_token
 };
 
 /// Estructura que contendrá al usuario autenticado
@@ -29,12 +25,6 @@ pub struct AuthMiddlewareFactory {
 impl AuthMiddlewareFactory {
     /// Middleware solo para autenticación
     pub fn new(app_state: Arc<AppState>) -> Self {
-        Self { app_state }
-    }
-
-    #[allow(dead_code)]
-    /// Middleware que también valida roles
-    pub fn with_roles(app_state: Arc<AppState>) -> Self {
         Self { app_state }
     }
 }
@@ -222,13 +212,34 @@ where
 
 // 🔹 Ejemplo básico de extracción de rol (puedes adaptarlo a tu JWT o base de datos)
 fn extract_user_role(req: &ServiceRequest) -> UserRole {
-    if let Some(hdr) = req.headers().get("x-user-role") {
-        match hdr.to_str().unwrap_or("") {
-            "Admin" => UserRole::Admin,
-            "User" => UserRole::User,
-            _ => UserRole::User,
-        }
-    } else {
-        UserRole::User
+    let app_data = req.app_data::<actix_web::web::Data<Arc<AppState>>>();
+    if app_data.is_none() {
+        println!("[ROLE] app_data inexistente → User");
+        return UserRole::User;
     }
+
+    let app_state = app_data.unwrap().as_ref();
+
+    let cookie = req.cookie("token");
+    if cookie.is_none() {
+        println!("[ROLE] Cookie token no existe → User");
+        return UserRole::User;
+    }
+
+    let token = cookie.unwrap().value().to_string();
+
+    let decoded = decode_token(
+        token,
+        app_state.env.decoding_key.clone()
+    );
+
+    if decoded.is_err() {
+        println!("[ROLE] Error decodificando JWT: {:?}", decoded.err());
+        return UserRole::User;
+    }
+
+    let claims = decoded.unwrap();
+    println!("[ROLE] claims.role = {:?}", claims.role);
+
+    claims.role
 }

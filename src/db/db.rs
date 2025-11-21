@@ -3,7 +3,7 @@ use chrono::{DateTime, Utc};
 use sqlx::{Pool, Postgres};
 use uuid::Uuid;
 
-use crate::{config::dtos::CreateCourseDTO, models::models::{Achievement, Course, Payment, User, UserAchievement, UserRole}};
+use crate::{config::dtos::{CourseWithVideos, CreateCourseDTO}, models::models::{Achievement, Course, Payment, User, UserAchievement, UserRole, Videos}};
 
 #[derive(Debug, Clone)]
 pub struct DBClient {
@@ -39,6 +39,7 @@ pub trait UserExt {
         password: T,
         verification_token: T,
         token_expiry: Option<DateTime<Utc>>,
+        role: Option<UserRole>,
     ) -> Result<User, sqlx::Error>;
 
     async fn get_user_count(&self) -> Result<i64, sqlx::Error>;
@@ -244,12 +245,14 @@ impl UserExt for DBClient {
         password: T,
         verification_token: T,
         token_expiry: Option<DateTime<Utc>>,
+        role: Option<UserRole>,
     ) -> Result<User, sqlx::Error> {
+        let role = role.unwrap_or(UserRole::User);
         let user = sqlx::query_as!(
             User,
             r#"
-            INSERT INTO users (name, email, password, verification_token, token_expiry) 
-            VALUES ($1, $2, $3, $4, $5) 
+            INSERT INTO users (name, email, password, verification_token, token_expiry, role) 
+            VALUES ($1, $2, $3, $4, $5, $6) 
             RETURNING
                 id, 
                 name, 
@@ -271,7 +274,8 @@ impl UserExt for DBClient {
             email.into(),
             password.into(),
             verification_token.into(),
-            token_expiry // This can be `None` if no expiry is provided.
+            token_expiry,
+            role as _
         )
         .fetch_one(&self.pool)
         .await?;
@@ -497,7 +501,7 @@ pub trait CourseExt {
     async fn create_course(
         &self,
         dto: CreateCourseDTO,
-    ) -> Result<Course, sqlx::Error>;
+    ) -> Result<CourseWithVideos, sqlx::Error>;
 
     async fn get_course(&self, course_id: Uuid) -> Result<Option<Course>, sqlx::Error>;
 
@@ -526,16 +530,13 @@ pub trait CourseExt {
 #[async_trait]
 impl CourseExt for DBClient {
     async fn create_course(
-        &self,
-        dto: CreateCourseDTO,
-    ) -> Result<Course, sqlx::Error> {
+    &self,
+    dto: CreateCourseDTO,
+    ) -> Result<CourseWithVideos, sqlx::Error> {
         let id = Uuid::new_v4();
-        let now = Utc::now().naive_utc();
+        let now = Utc::now();
 
-        // Convertir features a JSON
-        let features_json = dto.features.map(|f| serde_json::to_value(f).unwrap_or(serde_json::Value::Null));
-
-        // Insertar el curso
+        // Insertar curso
         let course = sqlx::query_as::<_, Course>(
             r#"
             INSERT INTO courses
@@ -552,38 +553,40 @@ impl CourseExt for DBClient {
         .bind(dto.level)
         .bind(dto.price)
         .bind(dto.duration)
-        .bind(dto.students.unwrap_or(0))        // students inicial
-        .bind(dto.rating.unwrap_or(5.0))        // rating inicial
+        .bind(dto.students.unwrap_or(0))
+        .bind(dto.rating.unwrap_or(5.0))
         .bind(dto.image)
         .bind(dto.category)
-        .bind(features_json)
+        .bind(dto.features.map(|f| serde_json::to_value(f).unwrap_or(serde_json::Value::Null)))
         .bind(now)
         .bind(now)
         .fetch_one(&self.pool)
         .await?;
 
-        // Insertar los videos asociados si existen
-        for (idx, video) in dto.videos.into_iter().enumerate() {
-            let video_id = Uuid::new_v4();
-            let _ = sqlx::query!(
+        // Insertar videos
+        let mut videos: Vec<Videos> = Vec::new();
+        for (idx, v) in dto.videos.into_iter().enumerate() {
+            let video = sqlx::query_as::<_, Videos>(
                 r#"
-                INSERT INTO videos (id, course_id, "order", title, url, duration, created_at, updated_at)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-                "#,
-                video_id,
-                id,
-                video.order.unwrap_or((idx + 1) as i32),
-                video.title,
-                video.url,
-                video.duration,
-                now,
-                now
+                INSERT INTO videos (course_id, "order", title, url, duration, created_at, updated_at)
+                VALUES ($1,$2,$3,$4,$5,$6,$7)
+                RETURNING *
+                "#
             )
-            .execute(&self.pool)
-            .await;
+            .bind(course.id)
+            .bind(v.order.unwrap_or((idx + 1) as i32))
+            .bind(v.title)
+            .bind(v.url)
+            .bind(v.duration)
+            .bind(now)
+            .bind(now)
+            .fetch_one(&self.pool)
+            .await?;
+
+            videos.push(video);
         }
 
-        Ok(course)
+        Ok(CourseWithVideos { course, videos })
     }
 
     async fn get_course(&self, course_id: Uuid) -> Result<Option<Course>, sqlx::Error> {

@@ -22,7 +22,7 @@ impl Config {
     pub fn init() -> Config {
         let database_url = env::var("DATABASE_URL").expect("DATABASE_URL no está seteada");
         let paypal_api_mode = env::var("PAYPAL_API_MODE").unwrap_or("https://api-m.sandbox.paypal.com".to_string());
-        let jwt_maxage = env::var("JWT_MAXAGE").unwrap_or("24".to_string()).parse().unwrap_or(24);
+        let jwt_maxage = env::var("JWT_MAXAGE").unwrap_or("3600".to_string()).parse().unwrap_or(3600);
         let private_key = fs::read("private.pem").expect("No se pudo leer private.pem");
         let public_key = fs::read("public.pem").expect("No se pudo leer public.pem");
         let encoding_key = EncodingKey::from_rsa_pem(&private_key).expect("Error al construir Encodingkey");

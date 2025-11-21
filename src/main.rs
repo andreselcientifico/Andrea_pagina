@@ -118,7 +118,6 @@ async fn main() -> std::io::Result<()> {
                 .wrap(AuthMiddlewareFactory::new(app_state.clone()))
                 .service(func::handlers::get_user_profile)
                 .service(func::handlers::update_user_profile)
-                .service(func::handlers::create_course)
                 .service(func::handlers::created_order)
                 .service(func::handlers::capture_order)
                 .service(func::handlers::cancel_order)

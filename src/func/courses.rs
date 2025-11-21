@@ -1,8 +1,5 @@
 use std::sync::Arc;
-use actix_web::{
-    web::{self, Data, Json, Path, Query, scope},
-    HttpResponse,
-};
+use actix_web::{ web::{ self, Data, Json, Path, Query, scope }, HttpResponse };
 use validator::Validate;
 use uuid::Uuid;
 use serde::Deserialize;
@@ -10,25 +7,17 @@ use sqlx::Error as SqlxError;
 
 use crate::{
     AppState,
-    config::dtos::{CreateCourseDTO, UpdateCourseDTO, },
+    config::dtos::{ CreateCourseDTO, UpdateCourseDTO },
     db::db::CourseExt,
-    errors::error::{ErrorMessage, HttpError},
-    middleware::middleware::{AuthMiddlewareFactory, RoleCheck, JWTAuthMiddleware},
+    errors::error::{ ErrorMessage, HttpError },
+    middleware::middleware::{ AuthMiddlewareFactory, RoleCheck, JWTAuthMiddleware },
     models::models::UserRole,
 };
 
 pub fn courses_scope(app_state: Arc<AppState>) -> impl actix_web::dev::HttpServiceFactory {
     scope("/courses")
-        // públicas
         .route("", web::get().to(get_courses))
         .route("/{id}", web::get().to(get_course))
-        // rutas que requieren autenticación (usuario logueado)
-        .service(
-            scope("")
-                .wrap(AuthMiddlewareFactory::new(app_state.clone()))
-                .route("", web::post().to(create_course)) // si quieres permitir que cualquier usuario cree curso, deja así
-        )
-        // rutas administrativas (JWT + role admin)
         .service(
             scope("")
                 .wrap(AuthMiddlewareFactory::new(app_state.clone()))
@@ -45,7 +34,6 @@ pub struct ListQuery {
     limit: Option<usize>,
 }
 
-
 pub async fn get_courses(
     Query(q): Query<ListQuery>,
     app_state: Data<Arc<AppState>>
@@ -54,8 +42,7 @@ pub async fn get_courses(
     let limit = q.limit.unwrap_or(10);
 
     let courses = app_state.db_client
-        .get_courses(page, limit)
-        .await
+        .get_courses(page, limit).await
         .map_err(|e| HttpError::server_error(e.to_string()))?;
 
     Ok(HttpResponse::Ok().json(courses))
@@ -69,34 +56,30 @@ pub async fn get_course(
     let course_id = Uuid::parse_str(&id_str).map_err(|e| HttpError::bad_request(e.to_string()))?;
 
     let course = app_state.db_client
-        .get_course(course_id)
-        .await
+        .get_course(course_id).await
         .map_err(|e| HttpError::server_error(e.to_string()))?;
 
     match course {
         Some(c) => Ok(HttpResponse::Ok().json(c)),
-        None => Err(HttpError::not_found(ErrorMessage::CourseNotFound.to_string()))
+        None => Err(HttpError::not_found(ErrorMessage::CourseNotFound.to_string())),
     }
 }
 
 pub async fn create_course(
     app_state: Data<Arc<AppState>>,
     Json(body): Json<CreateCourseDTO>,
-    _auth: web::ReqData<JWTAuthMiddleware>, // ya validado por middleware/RoleCheck o AuthMiddlewareFactory
+    _auth: web::ReqData<JWTAuthMiddleware> // ya validado por middleware/RoleCheck o AuthMiddlewareFactory
 ) -> Result<HttpResponse, HttpError> {
     body.validate().map_err(|e| HttpError::bad_request(e.to_string()))?;
 
-    let course = app_state.db_client
-        .create_course(body)
-        .await
-        .map_err(|e| {
-            let s = e.to_string();
-            if s.contains("duplicate") || s.contains("unique") {
-                HttpError::unique_constraint_violation(ErrorMessage::CourseAlreadyExists.to_string())
-            } else {
-                HttpError::server_error(s)
-            }
-        })?;
+    let course = app_state.db_client.create_course(body).await.map_err(|e| {
+        let s = e.to_string();
+        if s.contains("duplicate") || s.contains("unique") {
+            HttpError::unique_constraint_violation(ErrorMessage::CourseAlreadyExists.to_string())
+        } else {
+            HttpError::server_error(s)
+        }
+    })?;
 
     Ok(HttpResponse::Created().json(course))
 }
@@ -105,7 +88,7 @@ pub async fn update_course(
     path: Path<String>,
     app_state: Data<Arc<AppState>>,
     Json(body): Json<UpdateCourseDTO>,
-    _auth: web::ReqData<JWTAuthMiddleware>,
+    _auth: web::ReqData<JWTAuthMiddleware>
 ) -> Result<HttpResponse, HttpError> {
     body.validate().map_err(|e| HttpError::bad_request(e.to_string()))?;
 
@@ -113,11 +96,13 @@ pub async fn update_course(
     let course_id = Uuid::parse_str(&id_str).map_err(|e| HttpError::bad_request(e.to_string()))?;
 
     let updated = app_state.db_client
-        .update_course(course_id, body.name, body.description, body.price)
-        .await
-        .map_err(|e| match e {
-            SqlxError::RowNotFound => HttpError::not_found(ErrorMessage::CourseNotFound.to_string()),
-            _ => HttpError::server_error(e.to_string()),
+        .update_course(course_id, body.name, body.description, body.price).await
+        .map_err(|e| {
+            match e {
+                SqlxError::RowNotFound =>
+                    HttpError::not_found(ErrorMessage::CourseNotFound.to_string()),
+                _ => HttpError::server_error(e.to_string()),
+            }
         })?;
 
     Ok(HttpResponse::Ok().json(updated))
@@ -126,18 +111,18 @@ pub async fn update_course(
 pub async fn delete_course(
     path: Path<String>,
     app_state: Data<Arc<AppState>>,
-    _auth: web::ReqData<JWTAuthMiddleware>,
+    _auth: web::ReqData<JWTAuthMiddleware>
 ) -> Result<HttpResponse, HttpError> {
     let id_str = path.into_inner();
     let course_id = Uuid::parse_str(&id_str).map_err(|e| HttpError::bad_request(e.to_string()))?;
 
-    app_state.db_client
-        .delete_course(course_id)
-        .await
-        .map_err(|e| match e {
-            SqlxError::RowNotFound => HttpError::not_found(ErrorMessage::CourseNotFound.to_string()),
+    app_state.db_client.delete_course(course_id).await.map_err(|e| {
+        match e {
+            SqlxError::RowNotFound =>
+                HttpError::not_found(ErrorMessage::CourseNotFound.to_string()),
             _ => HttpError::server_error(e.to_string()),
-        })?;
+        }
+    })?;
 
     Ok(HttpResponse::NoContent().finish())
 }

@@ -37,8 +37,7 @@ pub struct User {
     pub birth_date: Option<NaiveDate>, 
     pub verified: bool,
     pub password: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub role: Option<UserRole>,
+    pub role: UserRole,
     pub verification_token: Option<String>,
     pub token_expiry: Option<DateTime<Utc>>,
     #[serde(rename = "profileImageUrl", skip_serializing_if = "Option::is_none")]
@@ -92,6 +91,24 @@ pub struct Course {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
+
+/// Representa un video perteneciente a un curso
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow, Clone)]
+pub struct Videos {
+    pub id: Uuid,
+
+    #[serde(rename = "courseId")]
+    pub course_id: Uuid,
+
+    pub title: String,
+    pub url: String,
+
+    pub duration: Option<String>,
+
+    #[serde(rename = "order")]
+    pub order: Option<i32>,
+}
+
 
 #[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]

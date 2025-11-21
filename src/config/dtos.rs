@@ -3,7 +3,7 @@ use chrono::{ DateTime, Utc, NaiveDate };
 use serde::{ Deserialize, Serialize };
 use validator::Validate; 
 
-use crate::models::models::{ UserRole, User, Course, Achievement };
+use crate::models::models::{ Achievement, Course, User, UserRole, Videos };
 
 #[derive(Validate, Debug, Default, Clone, Serialize, Deserialize)]
 pub struct RegisterDTO {
@@ -75,7 +75,7 @@ impl FilterUserDto {
             location: user.location.to_owned(),
             bio: user.bio.to_owned(),
             birth_date: user.birth_date,
-            role: Some(user.role.expect("Falta el role")),
+            role: user.role.clone().into(),
             verified: Some(user.verified),
             created_at: user.created_at,
             updated_at: user.updated_at,
@@ -190,7 +190,6 @@ pub struct ResetPasswordRequestDTO {
 
 #[allow(dead_code)]
 #[derive(Validate, Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct CreateCourseDTO {
     #[validate(length(min = 1, message = "El título del curso es requerido"))]
     pub title: String,
@@ -237,6 +236,13 @@ pub struct CreateVideoDTO {
 
     pub order: Option<i32>, // se puede asignar automáticamente si no viene
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CourseWithVideos {
+    pub course: Course,
+    pub videos: Vec<Videos>,
+}
+
 
 #[allow(dead_code)]
 #[derive(Validate, Debug, Clone, Serialize, Deserialize)]
