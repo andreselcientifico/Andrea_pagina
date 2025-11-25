@@ -63,8 +63,10 @@ pub async fn send_email(
         .build();
 
     match mailer.send(&email) {
-        Ok(_) => println!("✅ Email enviado correctamente!"),
-        Err(e) => println!("❌ Falló el envío de email: {:?}", e),
+        Ok(_) => (),
+        Err(e) => {
+            return Err(format!("Could not send email: {:?}", e).into());
+        }
     }
 
     Ok(())

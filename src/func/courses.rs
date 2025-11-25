@@ -17,6 +17,13 @@ use crate::{
 pub fn courses_scope(app_state: Arc<AppState>) -> impl actix_web::dev::HttpServiceFactory {
     scope("/courses")
         .route("", web::get().to(get_courses))
+        .service(
+            scope("/videos")
+                // Middleware solo para /courses/videos
+                .wrap(AuthMiddlewareFactory::new(app_state.clone()))
+                .wrap(RoleCheck::new(vec![UserRole::Admin]))
+                .route("", web::get().to(getcourses_with_videos))
+        )
         .route("/{id}", web::get().to(get_course))
         .service(
             scope("")
@@ -64,6 +71,27 @@ pub async fn get_course(
         None => Err(HttpError::not_found(ErrorMessage::CourseNotFound.to_string())),
     }
 }
+
+
+pub async fn getcourses_with_videos(
+    // Query(q): Query<ListQuery>,
+    app_state: Data<Arc<AppState>>
+) -> Result<HttpResponse, HttpError> {
+
+    // // Valores por defecto
+    // let page = q.page.unwrap_or(1);
+    // let limit = q.limit.unwrap_or(10);
+
+    // Obtener cursos con videos desde el DBClient
+    let courses = app_state.db_client
+        .get_courses_with_videos()
+        .await
+        .map_err(|e| HttpError::server_error(e.to_string()))?;
+
+    // Respuesta HTTP 200 OK
+    Ok(HttpResponse::Ok().json(courses))
+}
+
 
 pub async fn create_course(
     app_state: Data<Arc<AppState>>,

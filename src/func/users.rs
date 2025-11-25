@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use actix_web::{ 
-   HttpResponse, Responder,middleware::{ Logger}, web::{ ReqData,Data, Json, Query,  resource, scope, get, put}
+   HttpResponse, Responder, web::{ ReqData,Data, Json, Query,  resource, scope, get, put}
 };
 use validator::Validate;
 
@@ -15,10 +15,9 @@ use crate::{
 
 pub fn users_scope(app_state: Arc<AppState>) -> impl actix_web::dev::HttpServiceFactory {
     scope("/users")
-        .wrap(Logger::default())
-        .wrap(AuthMiddlewareFactory::new(app_state.clone()))
         .service(resource("/me")
         .route(get().to(get_me))
+        .wrap(AuthMiddlewareFactory::new(app_state.clone()))
         .wrap(RoleCheck::new(vec![UserRole::User, UserRole::Admin])),
     )
 

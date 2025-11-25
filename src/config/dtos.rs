@@ -238,7 +238,7 @@ pub struct CreateVideoDTO {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct CourseWithVideos {
+pub struct CourseWithVideosDTO {
     pub course: Course,
     pub videos: Vec<Videos>,
 }

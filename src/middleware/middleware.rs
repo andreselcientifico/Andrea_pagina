@@ -214,7 +214,6 @@ where
 fn extract_user_role(req: &ServiceRequest) -> UserRole {
     let app_data = req.app_data::<actix_web::web::Data<Arc<AppState>>>();
     if app_data.is_none() {
-        println!("[ROLE] app_data inexistente → User");
         return UserRole::User;
     }
 
@@ -222,7 +221,6 @@ fn extract_user_role(req: &ServiceRequest) -> UserRole {
 
     let cookie = req.cookie("token");
     if cookie.is_none() {
-        println!("[ROLE] Cookie token no existe → User");
         return UserRole::User;
     }
 
@@ -234,12 +232,10 @@ fn extract_user_role(req: &ServiceRequest) -> UserRole {
     );
 
     if decoded.is_err() {
-        println!("[ROLE] Error decodificando JWT: {:?}", decoded.err());
         return UserRole::User;
     }
 
     let claims = decoded.unwrap();
-    println!("[ROLE] claims.role = {:?}", claims.role);
 
     claims.role
 }

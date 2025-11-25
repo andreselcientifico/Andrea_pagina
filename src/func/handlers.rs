@@ -1,5 +1,5 @@
 use actix_web::{ 
-    HttpMessage, HttpRequest, HttpResponse, cookie::Cookie, http::header,post,put,get, web::{ Data, Json, Query}
+    HttpMessage, HttpRequest, HttpResponse, cookie::{Cookie, SameSite}, get, http::header, post, put, web::{ Data, Json, Query}
 };
 use std::sync::Arc;
 use validator::Validate;
@@ -90,7 +90,8 @@ pub async fn register_user(
                 .path("/")
                 .max_age(time::Duration::minutes(app_state.env.jwt_maxage * 60))
                 .http_only(true)
-                .secure(true) 
+                .secure(true)
+                .same_site(SameSite::None)
                 .finish()
                 ).json(Response {
                 status: "success",
@@ -136,6 +137,7 @@ pub async fn login_user(app_state: Data<Arc<AppState>>, Json(body): Json<LoginDT
                 .max_age(time::Duration::minutes(app_state.env.jwt_maxage * 60))
                 .http_only(true)
                 .secure(true) 
+                .same_site(SameSite::None)
                 .finish()
                 ).json(UserLoginResponseDto {
                     status: "success".to_string(),
@@ -303,7 +305,6 @@ pub async fn get_user_profile(req: HttpRequest, app_state: Data<Arc<AppState>>) 
                 .get_user_courses(user_id)
                 .await
                 .map_err(|e| {
-                    eprintln!("Error al obtener cursos: {:?}", e);
                     HttpError::server_error(e.to_string())
                 })?;
 
@@ -311,7 +312,6 @@ pub async fn get_user_profile(req: HttpRequest, app_state: Data<Arc<AppState>>) 
                 .get_user_achievements(user_id)
                 .await
                 .map_err(|e| {
-                    eprintln!("Error al obtener logros: {:?}", e);
                     HttpError::server_error(e.to_string())
                 })?;
 

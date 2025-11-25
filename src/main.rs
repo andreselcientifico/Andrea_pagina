@@ -9,6 +9,7 @@ mod utils;
 mod middleware;
 mod mail;
 
+use actix_web::middleware::Compress;
 use actix_web::{ web,web::Data,  App, HttpServer, HttpResponse };
 use chrono::{ DateTime, Utc };
 use openssl::ssl::{ SslAcceptor, SslFiletype, SslMethod };
@@ -19,7 +20,6 @@ use tokio::sync::Mutex;
 use db::db::DBClient;
 use sqlx::postgres::PgPoolOptions;
 use dotenvy;
-use actix_web::http::header::{ AUTHORIZATION, ACCEPT, CONTENT_TYPE };
 use middleware::middleware::AuthMiddlewareFactory;
 use crate::func::users::users_scope;
 use crate::func::courses::courses_scope;
@@ -91,16 +91,19 @@ async fn main() -> std::io::Result<()> {
  
        
         App::new()
+            .wrap(Compress::default())
             .wrap(
                 actix_cors::Cors::permissive()
-                .allowed_origin("https://localhost:8080")
-                .allowed_origin("https://192.168.1.12:8080")
                 .allowed_origin_fn(| origin, _req_head| {
+                    let origin = origin.to_str().unwrap_or("");
                     origin.as_bytes().ends_with(b"localhost:8080")
                 })
-                .allowed_methods(vec!["GET", "POST", "PUT", "DELETE"])
-                .allowed_headers(vec![AUTHORIZATION, ACCEPT])
-                .allowed_header(CONTENT_TYPE)
+                .allowed_origin_fn(| origin, _req_head| {
+                    let origin = origin.to_str().unwrap_or("");
+                    origin.as_bytes().ends_with(b".trycloudflare.com")
+                })
+                .allow_any_method()
+                .allow_any_header()
                 .supports_credentials()
                 .max_age(3600)
             )
@@ -125,7 +128,7 @@ async fn main() -> std::io::Result<()> {
             
     })
         .workers(8)
-        .bind_openssl("127.0.0.1:8000", builder)?
-        // .bind("127.0.0.1:8000")?
+        // .bind_openssl("127.0.0.1:8000", builder)?
+        .bind("127.0.0.1:8000")?
         .run().await
 }

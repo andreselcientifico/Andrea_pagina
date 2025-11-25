@@ -3,7 +3,7 @@ use chrono::{DateTime, Utc};
 use sqlx::{Pool, Postgres};
 use uuid::Uuid;
 
-use crate::{config::dtos::{CourseWithVideos, CreateCourseDTO}, models::models::{Achievement, Course, Payment, User, UserAchievement, UserRole, Videos}};
+use crate::{config::dtos::{CourseWithVideosDTO, CreateCourseDTO}, models::models::{Achievement, Course, Payment, User, UserAchievement, UserRole, Videos}};
 
 #[derive(Debug, Clone)]
 pub struct DBClient {
@@ -501,7 +501,7 @@ pub trait CourseExt {
     async fn create_course(
         &self,
         dto: CreateCourseDTO,
-    ) -> Result<CourseWithVideos, sqlx::Error>;
+    ) -> Result<CourseWithVideosDTO, sqlx::Error>;
 
     async fn get_course(&self, course_id: Uuid) -> Result<Option<Course>, sqlx::Error>;
 
@@ -512,6 +512,10 @@ pub trait CourseExt {
         page: u32,
         limit: usize,
     ) -> Result<Vec<Course>, sqlx::Error>;
+
+    async fn get_courses_with_videos(
+        &self,
+    ) -> Result<Vec<CourseWithVideosDTO>, sqlx::Error> ;
 
     async fn update_course(
         &self,
@@ -532,7 +536,7 @@ impl CourseExt for DBClient {
     async fn create_course(
     &self,
     dto: CreateCourseDTO,
-    ) -> Result<CourseWithVideos, sqlx::Error> {
+    ) -> Result<CourseWithVideosDTO, sqlx::Error> {
         let id = Uuid::new_v4();
         let now = Utc::now();
 
@@ -586,7 +590,7 @@ impl CourseExt for DBClient {
             videos.push(video);
         }
 
-        Ok(CourseWithVideos { course, videos })
+        Ok(CourseWithVideosDTO { course, videos })
     }
 
     async fn get_course(&self, course_id: Uuid) -> Result<Option<Course>, sqlx::Error> {
@@ -635,6 +639,122 @@ impl CourseExt for DBClient {
         
         Ok(courses)
     }
+
+    async fn get_courses_with_videos(
+        &self,
+    ) -> Result<Vec<CourseWithVideosDTO>, sqlx::Error> {
+        #[derive(sqlx::FromRow)]
+        struct CourseVideoRow {
+            // Datos del curso
+            course_id: uuid::Uuid,
+            title: String,
+            description: String,
+            long_description: Option<String>,
+            level: String,
+            price: f64,
+            duration: Option<String>,
+            students: i32,
+            rating: f32,
+            image: Option<String>,
+            category: String,
+            features: Option<serde_json::Value>,
+            course_created_at: chrono::DateTime<chrono::Utc>,
+            course_updated_at: chrono::DateTime<chrono::Utc>,
+
+            // Datos del video (pueden ser NULL si el curso no tiene videos)
+            video_id: Option<uuid::Uuid>,
+            video_title: Option<String>,
+            video_url: Option<String>,
+            video_duration: Option<String>,
+            video_order: Option<i32>,
+        }
+
+        // 1️⃣ Consulta optimizada (una sola query)
+        let rows = sqlx
+            ::query_as::<_, CourseVideoRow>(
+                r#"
+        SELECT
+            c.id AS course_id,
+            c.title,
+            c.description,
+            c.long_description,
+            c.level,
+            c.price,
+            c.duration,
+            c.students,
+            c.rating,
+            c.image,
+            c.category,
+            c.features,
+            c.created_at AS course_created_at,
+            c.updated_at AS course_updated_at,
+
+            v.id AS video_id,
+            v.title AS video_title,
+            v.url AS video_url,
+            v.duration AS video_duration,
+            v."order" AS video_order
+
+        FROM courses c
+        LEFT JOIN videos v ON v.course_id = c.id
+        ORDER BY c.created_at DESC, v."order" ASC;
+        "#
+            )
+            .fetch_all(&self.pool).await?;
+
+        // 2️⃣ Agrupar por curso y construir CourseWithVideosDTO
+        use std::collections::HashMap;
+        let mut course_map: HashMap<Uuid, (Course, Vec<Videos>)> = HashMap::new();
+
+        for row in rows {
+            // Crear el objeto Course
+            let course = Course {
+                id: row.course_id,
+                title: row.title,
+                description: row.description,
+                long_description: row.long_description,
+                level: row.level,
+                price: row.price,
+                duration: row.duration,
+                students: row.students,
+                rating: row.rating,
+                image: row.image,
+                category: row.category,
+                features: row.features,
+                created_at: row.course_created_at,
+                updated_at: row.course_updated_at,
+            };
+
+            // Si hay datos de video, crear el objeto Videos
+            let video = if let Some(video_id) = row.video_id {
+                Some(Videos {
+                    id: video_id,
+                    course_id: row.course_id,
+                    title: row.video_title.unwrap_or_default(),
+                    url: row.video_url.unwrap_or_default(),
+                    duration: row.video_duration,
+                    order: row.video_order,
+                })
+            } else {
+                None
+            };
+
+            // Agregar al mapa
+            let entry = course_map.entry(row.course_id).or_insert((course, Vec::new()));
+            if let Some(v) = video {
+                entry.1.push(v);
+            }
+        }
+
+        // 3️⃣ Convertir mapa → vector final
+        let result: Vec<CourseWithVideosDTO> = course_map
+            .into_iter()
+            .map(|(_, (course, videos))| CourseWithVideosDTO { course, videos })
+            .collect();
+
+        Ok(result)
+    }
+
 
     async fn update_course(
         &self,
