@@ -10,8 +10,9 @@ pub struct TokenClaims {
     pub role: UserRole,
     pub iat: usize,
     pub exp: usize,
+    pub subscription_expires_at: Option<i64>,
 }
-pub fn create_token_rsa(user_id: &str, role:UserRole, secret: &EncodingKey, expiration_in_seconds: i64) -> Result<String, JwtError> {
+pub fn create_token_rsa(user_id: &str, role:UserRole, subscription_expires_at: Option<i64>, secret: &EncodingKey, expiration_in_seconds: i64) -> Result<String, JwtError> {
     if user_id.is_empty() {
         return Err(jsonwebtoken::errors::ErrorKind::InvalidSubject.into());
     }
@@ -25,6 +26,7 @@ pub fn create_token_rsa(user_id: &str, role:UserRole, secret: &EncodingKey, expi
             role,
             iat: now.timestamp() as usize,
             exp: (now + Duration::seconds(expiration_in_seconds)).timestamp() as usize,
+            subscription_expires_at,
         },
         secret,
     )

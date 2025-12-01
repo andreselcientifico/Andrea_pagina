@@ -83,7 +83,7 @@ pub async fn register_user(
             if let Err(e) = send_email_result {
                return Err(HttpError::server_error(format!("Ocurrio un error: {}", e)))
             }
-            let token = create_token_rsa(&user.id.to_string(), user.role, &app_state.env.encoding_key, app_state.env.jwt_maxage)
+            let token = create_token_rsa(&user.id.to_string(), user.role,None, &app_state.env.encoding_key, app_state.env.jwt_maxage)
             .map_err(|e| HttpError::server_error(e.to_string()))?;
             Ok(HttpResponse::Created().cookie(
                 Cookie::build("token", token.clone())
@@ -126,7 +126,7 @@ pub async fn login_user(app_state: Data<Arc<AppState>>, Json(body): Json<LoginDT
 
     if verify_password(&body.password, &user.password)
         .map_err(|_| HttpError::bad_request(ErrorMessage::WrongCredentials.to_string()))? {
-        let token = create_token_rsa(&user.id.to_string(), user.role, &app_state.env.encoding_key, app_state.env.jwt_maxage)
+        let token = create_token_rsa(&user.id.to_string(), user.role,None, &app_state.env.encoding_key, app_state.env.jwt_maxage)
             .map_err(|e| HttpError::server_error(e.to_string()))?;
 
         Ok(
@@ -159,7 +159,7 @@ pub async fn logout_user() -> HttpResponse {
                 .max_age(time::Duration::seconds(0))
                 .http_only(true)
                 .secure(true)
-                .same_site(actix_web::cookie::SameSite::None)
+                .same_site(SameSite::None)
                 .finish()
         )
         .json(serde_json::json!({ "status": "success", "message": "Sesión cerrada" }))
@@ -193,7 +193,7 @@ pub async fn verify_email(Query(query_params): Query<VerifyEmailQueryDTO>, app_s
         return Err(HttpError::server_error(format!("Ocurrio un error: {}", e)))
     }
 
-    let token = create_token_rsa(&user.id.to_string(), user.role, &app_state.env.encoding_key, app_state.env.jwt_maxage)
+    let token = create_token_rsa(&user.id.to_string(), user.role, None,&app_state.env.encoding_key, app_state.env.jwt_maxage)
         .map_err(|e| HttpError::server_error(e.to_string()))?;
 
     Ok(
@@ -204,7 +204,7 @@ pub async fn verify_email(Query(query_params): Query<VerifyEmailQueryDTO>, app_s
                 .max_age(time::Duration::minutes(app_state.env.jwt_maxage * 60))
                 .http_only(true)
                 .secure(true) 
-                .same_site(actix_web::cookie::SameSite::None)
+                .same_site(SameSite::None)
                 .finish()
                 ).json(UserLoginResponseDto {
                     status: "success".to_string(),

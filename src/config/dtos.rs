@@ -1,9 +1,10 @@
 use core::str;
 use chrono::{ DateTime, Utc, NaiveDate };
 use serde::{ Deserialize, Serialize };
+use uuid::Uuid;
 use validator::Validate; 
 
-use crate::models::models::{ Achievement, Course, User, UserRole, Videos };
+use crate::models::models::{ Achievement, Course, User, UserRole};
 
 #[derive(Validate, Debug, Default, Clone, Serialize, Deserialize)]
 pub struct RegisterDTO {
@@ -220,36 +221,158 @@ pub struct CreateCourseDTO {
     pub features: Option<Vec<String>>, // JSONB -> Vec<String>
 
     #[serde(default)]
-    pub videos: Vec<CreateVideoDTO>, // array de videos
+    pub modules: Vec<CreateModuleDTO>, // array de videos
 }
 
-#[allow(dead_code)]
 #[derive(Validate, Debug, Clone, Serialize, Deserialize)]
-pub struct CreateVideoDTO {
-    #[validate(length(min = 1, message = "El título del video es requerido"))]
+pub struct CreateLessonDTO {
+    #[validate(length(min = 1, message = "El título de la lección es requerido"))]
     pub title: String,
-
-    #[validate(length(min = 1, message = "La URL del video es requerida"))]
-    pub url: String,
-
-    pub duration: Option<String>, // ej: "15:30"
-
-    pub order: Option<i32>, // se puede asignar automáticamente si no viene
+    
+    pub duration: Option<String>,
+    pub completed: bool,
+    #[serde(rename = "type")]
+    #[validate(length(min = 1, message = "El tipo de lección es requerido"))]
+    pub r#type: String, // video | exercise | quiz
+    
+    pub content_url: Option<String>,
+    pub description: Option<String>,
+    
+    // El orden es opcional en la entrada, se puede calcular si no se proporciona
+    pub order: Option<i32>, 
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct CourseWithVideosDTO {
-    pub course: Course,
-    pub videos: Vec<Videos>,
+#[derive(Validate, Debug, Clone, Serialize, Deserialize)]
+pub struct CreateModuleDTO {
+    #[validate(length(min = 1, message = "El título del módulo es requerido"))]
+    pub title: String,
+    
+    // El orden es opcional en la entrada, se puede calcular si no se proporciona
+    pub order: Option<i32>, 
+    
+    #[serde(default)]
+    pub lessons: Vec<CreateLessonDTO>,
 }
-
 
 #[allow(dead_code)]
-#[derive(Validate, Debug, Clone, Serialize, Deserialize)]
+#[derive(Validate, Debug, Clone, Serialize, Deserialize,PartialEq)]
 pub struct UpdateCourseDTO {
-    pub name: Option<String>,
+    #[validate(length(min = 1, message = "El título del curso es requerido"))]
+    pub title: Option<String>,
+
+    #[validate(length(min = 1, message = "La descripción corta es requerida"))]
     pub description: Option<String>,
+
+    pub long_description: Option<String>,
+
+    #[validate(length(min = 1, message = "El nivel es requerido"))]
+    pub level: Option<String>, // "básico" | "intermedio" | "avanzado"
+
+    #[validate(range(min = 0.0, message = "El precio debe ser mayor a 0"))]
     pub price: Option<f64>,
+
+    pub duration: Option<String>, // ej: "4 semanas"
+
+    pub students: Option<i32>, // se puede calcular por defecto
+
+    pub rating: Option<f32>, // calificación inicial, por defecto 5.0
+
+    pub image: Option<String>, // URL de imagen
+
+    #[validate(length(min = 1, message = "La categoría es requerida"))]
+    pub category: Option<String>, // "básico" | "premium"
+
+    #[serde(default)]
+    pub features: Option<Vec<String>>, // JSONB -> Vec<String>
+
+    #[serde(default)]
+    pub modules: Option<Vec<UpdateModuleDTO>>, // array de videos
+}
+
+impl PartialEq<Course> for UpdateCourseDTO {
+    fn eq(&self, other: &Course) -> bool {
+        self.title == Some(other.title.clone())
+            && self.description == Some(other.description.clone())
+            // Comparación correcta de Option<String> con String
+            && self.long_description == other.long_description
+            && self.level == Some(other.level.clone())
+            && self.price == Some(other.price)
+            && self.duration == other.duration
+            && self.students == Some(other.students)
+            && self.rating == Some(other.rating)
+            && self.image == other.image
+            && self.category == Some(other.category.clone())
+    }
+}
+
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct UpdateLessonDTO {
+    // Si 'id' está presente, se actualiza; si es None, se crea una nueva lección.
+    pub id: Option<Uuid>, 
+    
+    // Los campos son Option<T> si se permite la actualización parcial
+    pub title: Option<String>, 
+    pub duration: Option<String>,
+    pub completed: Option<bool>,
+    #[serde(rename = "type")]
+    pub r#type: Option<String>,
+    pub content_url: Option<String>,
+    pub description: Option<String>,
+    pub order: Option<i32>, 
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct UpdateModuleDTO {
+    // Si 'id' está presente, se actualiza; si es None, se crea un nuevo módulo.
+    pub id: Option<Uuid>, 
+
+    pub title: Option<String>,
+    pub order: Option<i32>,
+
+    #[serde(default)]
+    // Aquí el Option<Vec> permite que se omita la lista de lecciones si no se van a actualizar
+    pub lessons: Option<Vec<UpdateLessonDTO>>, 
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LessonDto {
+    pub id: Uuid,
+    pub title: String,
+    pub duration: Option<String>,
+    pub completed: Option<bool>,
+    pub r#type: String,
+    pub content_url: Option<String>,
+    pub description: Option<String>,
+    pub order: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ModuleWithLessonsDto {
+    pub id: Uuid,
+    pub title: String,
+    pub order: i32,
+    pub lessons: Vec<LessonDto>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CourseWithModulesDto {
+    pub id: Uuid,
+    pub title: String,
+    pub description: String,
+    pub long_description: Option<String>,
+    pub price: f64,
+    pub level: String,
+    pub duration: Option<String>,
+    pub students: i32,
+    pub rating: f32,
+    pub image: Option<String>,
+    pub category: String,
+    pub features: Option<Vec<String>>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+
+    pub modules: Vec<ModuleWithLessonsDto>,
 }
 
 #[allow(dead_code)]

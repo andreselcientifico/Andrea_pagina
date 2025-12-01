@@ -33,6 +33,7 @@ mod tests {
             bio: None,
             birth_date: None,
             profile_image_url: None,
+            subscription_expires_at: None,
         }
     }
 

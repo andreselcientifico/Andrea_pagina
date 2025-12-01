@@ -1,9 +1,11 @@
+use std::collections::HashMap;
+
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sqlx::{Pool, Postgres};
 use uuid::Uuid;
 
-use crate::{config::dtos::{CourseWithVideosDTO, CreateCourseDTO}, models::models::{Achievement, Course, Payment, User, UserAchievement, UserRole, Videos}};
+use crate::{config::dtos::{CourseWithModulesDto, CreateCourseDTO, CreateLessonDTO, CreateModuleDTO, LessonDto, ModuleWithLessonsDto, UpdateCourseDTO},  models::models::{Achievement, Course, Lesson, Module, Payment, User, UserAchievement, UserRole}};
 
 #[derive(Debug, Clone)]
 pub struct DBClient {
@@ -117,7 +119,8 @@ impl UserExt for DBClient {
                 verification_token, 
                 token_expiry, 
                 role as "role: UserRole",
-                profile_image_url
+                profile_image_url,
+                subscription_expires_at
             FROM users
             WHERE id = $1
             "#,
@@ -142,7 +145,8 @@ impl UserExt for DBClient {
                 verification_token, 
                 token_expiry, 
                 role as "role: UserRole",
-                profile_image_url
+                profile_image_url,
+                subscription_expires_at
             FROM users
             WHERE name = $1
             "#,
@@ -167,7 +171,8 @@ impl UserExt for DBClient {
                 verification_token, 
                 token_expiry, 
                 role as "role: UserRole",
-                profile_image_url
+                profile_image_url,
+                subscription_expires_at
             FROM users
             WHERE email = $1
             "#,
@@ -192,7 +197,8 @@ impl UserExt for DBClient {
                 verification_token, 
                 token_expiry, 
                 role as "role: UserRole",
-                profile_image_url
+                profile_image_url,
+                subscription_expires_at
             FROM users
             WHERE verification_token = $1
             "#,
@@ -227,7 +233,8 @@ impl UserExt for DBClient {
                 verification_token, 
                 token_expiry, 
                 role as "role: UserRole",
-                profile_image_url
+                profile_image_url,
+                subscription_expires_at
             FROM users
             ORDER BY created_at DESC LIMIT $1 OFFSET $2"#,
             limit as i64,
@@ -268,7 +275,8 @@ impl UserExt for DBClient {
                 verification_token, 
                 token_expiry, 
                 role as "role: UserRole",
-                profile_image_url
+                profile_image_url,
+                subscription_expires_at
             "#,
             name.into(),
             email.into(),
@@ -318,7 +326,8 @@ impl UserExt for DBClient {
                 verification_token, 
                 token_expiry, 
                 role as "role: UserRole",
-                profile_image_url
+                profile_image_url,
+                subscription_expires_at
             "#,
             new_name.into(),
             user_id
@@ -354,7 +363,8 @@ impl UserExt for DBClient {
                 verification_token, 
                 token_expiry, 
                 role as "role: UserRole",
-                profile_image_url
+                profile_image_url,
+                subscription_expires_at
             "#,
             new_role as UserRole,
             user_id
@@ -402,7 +412,8 @@ impl UserExt for DBClient {
                 verification_token,
                 token_expiry,
                 role as "role: UserRole",
-                profile_image_url
+                profile_image_url,
+                subscription_expires_at
             "#,
             name,
             phone,
@@ -444,7 +455,8 @@ impl UserExt for DBClient {
                 verification_token, 
                 token_expiry, 
                 role as "role: UserRole",
-                profile_image_url
+                profile_image_url,
+                subscription_expires_at
             "#,
             new_password,
             user_id
@@ -496,12 +508,16 @@ impl UserExt for DBClient {
     }
 }
 
+// ===================== //
+//      COURSES EXT 
+// ===================== //
+
 #[async_trait]
 pub trait CourseExt {
     async fn create_course(
         &self,
         dto: CreateCourseDTO,
-    ) -> Result<CourseWithVideosDTO, sqlx::Error>;
+    ) -> Result<CreateCourseDTO, sqlx::Error>;
 
     async fn get_course(&self, course_id: Uuid) -> Result<Option<Course>, sqlx::Error>;
 
@@ -513,17 +529,20 @@ pub trait CourseExt {
         limit: usize,
     ) -> Result<Vec<Course>, sqlx::Error>;
 
-    async fn get_courses_with_videos(
+    async fn get_all_courses_with_modules(
         &self,
-    ) -> Result<Vec<CourseWithVideosDTO>, sqlx::Error> ;
+    ) -> Result<Vec<CourseWithModulesDto>, sqlx::Error> ;
+
+    async fn get_course_with_videos(
+    &self,
+    course_id: Uuid,
+) -> Result<Option<CourseWithModulesDto>, sqlx::Error>;
 
     async fn update_course(
         &self,
         course_id: Uuid,
-        title: Option<String>,
-        description: Option<String>,
-        price: Option<f64>,
-    ) -> Result<Course, sqlx::Error>;
+        dto: UpdateCourseDTO,
+    ) -> Result<CourseWithModulesDto, sqlx::Error>;
 
     async fn delete_course(&self, course_id: Uuid) -> Result<(), sqlx::Error>;
 
@@ -531,66 +550,184 @@ pub trait CourseExt {
     async fn get_course_count(&self) -> Result<i64, sqlx::Error>;
 }
 
+// ===================== //
+//   IMPLEMENTATION COURSES EXT
+// ===================== //
 #[async_trait]
 impl CourseExt for DBClient {
     async fn create_course(
-    &self,
-    dto: CreateCourseDTO,
-    ) -> Result<CourseWithVideosDTO, sqlx::Error> {
-        let id = Uuid::new_v4();
+        &self,
+        dto: CreateCourseDTO,
+    ) -> Result<CreateCourseDTO, sqlx::Error> {
+        println!("--> INICIO create_course: Recibido título: {}", dto.title);
+
+        let course_id = Uuid::new_v4();
         let now = Utc::now();
 
-        // Insertar curso
-        let course = sqlx::query_as::<_, Course>(
+        // 1. INICIAR TRANSACCIÓN
+        let mut tx = match self.pool.begin().await {
+            Ok(t) => t,
+            Err(e) => {
+                println!("ERROR: Falló al iniciar transacción: {:?}", e);
+                return Err(e);
+            }
+        };
+
+        println!("--> Transacción iniciada. Insertando curso...");
+
+        // 2. INSERTAR CURSO
+        // Nota: Manejo seguro de features
+        let features_json = match &dto.features {
+            Some(f) => serde_json::to_value(f).unwrap_or(serde_json::Value::Array(vec![])),
+            None => serde_json::Value::Array(vec![]),
+        };
+
+        let course_insert_result = sqlx::query_as::<_, Course>(
             r#"
             INSERT INTO courses
                 (id, title, description, long_description, level, price, duration, students, rating, image, category, features, created_at, updated_at)
             VALUES
-                ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+                ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
             RETURNING *
             "#
         )
-        .bind(id)
-        .bind(dto.title)
-        .bind(dto.description)
-        .bind(dto.long_description)
-        .bind(dto.level)
-        .bind(dto.price)
-        .bind(dto.duration)
+        .bind(course_id)
+        .bind(&dto.title)
+        .bind(&dto.description)
+        .bind(&dto.long_description)
+        .bind(&dto.level)
+        .bind(dto.price) // Asegúrate que dto.price sea compatible con DECIMAL
+        .bind(&dto.duration)
         .bind(dto.students.unwrap_or(0))
         .bind(dto.rating.unwrap_or(5.0))
-        .bind(dto.image)
-        .bind(dto.category)
-        .bind(dto.features.map(|f| serde_json::to_value(f).unwrap_or(serde_json::Value::Null)))
+        .bind(&dto.image)
+        .bind(&dto.category)
+        .bind(features_json)
         .bind(now)
         .bind(now)
-        .fetch_one(&self.pool)
-        .await?;
+        .fetch_one(&mut *tx)
+        .await;
 
-        // Insertar videos
-        let mut videos: Vec<Videos> = Vec::new();
-        for (idx, v) in dto.videos.into_iter().enumerate() {
-            let video = sqlx::query_as::<_, Videos>(
+        let course = match course_insert_result {
+            Ok(c) => c,
+            Err(e) => {
+                println!("ERROR SQL al insertar CURSO: {:?}", e);
+                // Hacemos rollback manual aunque sqlx lo suele hacer al caer el scope
+                let _ = tx.rollback().await; 
+                return Err(e);
+            }
+        };
+
+        println!("--> Curso insertado. Procesando {} módulos...", dto.modules.len());
+
+        // 3. INSERTAR MÓDULOS Y LECCIONES
+        let mut modules_dtos: Vec<CreateModuleDTO> = Vec::new();
+
+        for (module_idx, module_dto) in dto.modules.into_iter().enumerate() {
+            let module_id = Uuid::new_v4();
+            // Forzamos el orden basado en el índice para evitar error de UNIQUE constraint
+            let module_order = (module_idx + 1) as i32; 
+
+            println!("----> Insertando Módulo {}: {}", module_order, module_dto.title);
+
+            let module_insert = sqlx::query_as::<_, Module>(
                 r#"
-                INSERT INTO videos (course_id, "order", title, url, duration, created_at, updated_at)
-                VALUES ($1,$2,$3,$4,$5,$6,$7)
+                INSERT INTO modules (id, course_id, title, "order")
+                VALUES ($1, $2, $3, $4)
                 RETURNING *
                 "#
             )
-            .bind(course.id)
-            .bind(v.order.unwrap_or((idx + 1) as i32))
-            .bind(v.title)
-            .bind(v.url)
-            .bind(v.duration)
-            .bind(now)
-            .bind(now)
-            .fetch_one(&self.pool)
-            .await?;
+            .bind(module_id)
+            .bind(course_id)
+            .bind(&module_dto.title)
+            .bind(module_order)
+            .fetch_one(&mut *tx)
+            .await;
 
-            videos.push(video);
+            let module_model = match module_insert {
+                Ok(m) => m,
+                Err(e) => {
+                    println!("ERROR SQL al insertar MÓDULO '{}': {:?}", module_dto.title, e);
+                    let _ = tx.rollback().await;
+                    return Err(e);
+                }
+            };
+
+            let mut lessons_dtos: Vec<CreateLessonDTO> = Vec::new();
+
+            for (lesson_idx, lesson) in module_dto.lessons.into_iter().enumerate() {
+                // Forzamos el orden también aquí
+                let lesson_order = (lesson_idx + 1) as i32;
+
+                println!("------> Insertando Lección {}: {}", lesson_order, lesson.title);
+
+                let lesson_insert = sqlx::query_as::<_, Lesson>(
+                    r#"
+                    INSERT INTO lessons (module_id, title, duration, "type", content_url, description, "order")
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    RETURNING *
+                    "#
+                )
+                .bind(module_id)
+                .bind(&lesson.title)
+                .bind(&lesson.duration)
+                .bind(&lesson.r#type)
+                .bind(&lesson.content_url)
+                .bind(&lesson.description)
+                .bind(lesson_order)
+                .fetch_one(&mut *tx)
+                .await;
+
+                let lesson_model = match lesson_insert {
+                    Ok(l) => l,
+                    Err(e) => {
+                        println!("ERROR SQL al insertar LECCIÓN '{}': {:?}", lesson.title, e);
+                        let _ = tx.rollback().await;
+                        return Err(e);
+                    }
+                };
+
+                lessons_dtos.push(CreateLessonDTO {
+                    title: lesson_model.title,
+                    duration: lesson_model.duration,
+                    completed: false,
+                    r#type: lesson_model.r#type,
+                    content_url: lesson_model.content_url,
+                    description: lesson_model.description,
+                    order: Some(lesson_order),
+                });
+            }
+
+            modules_dtos.push(CreateModuleDTO {
+                title: module_model.title,
+                order: Some(module_order),
+                lessons: lessons_dtos,
+            });
         }
 
-        Ok(CourseWithVideosDTO { course, videos })
+        // 4. CONFIRMAR TRANSACCIÓN
+        println!("--> Confirmando transacción (COMMIT)...");
+        if let Err(e) = tx.commit().await {
+            println!("ERROR CRÍTICO: Falló el COMMIT: {:?}", e);
+            return Err(e);
+        }
+
+        println!("--> ÉXITO: Curso creado correctamente.");
+
+        Ok(CreateCourseDTO {
+            title: course.title,
+            description: course.description,
+            long_description: course.long_description,
+            level: course.level,
+            price: course.price,
+            duration: course.duration,
+            students: Some(course.students),
+            rating: Some(course.rating),
+            image: course.image,
+            category: course.category,
+            features: course.features.and_then(|f| serde_json::from_value(f).ok()),
+            modules: modules_dtos,
+        })
     }
 
     async fn get_course(&self, course_id: Uuid) -> Result<Option<Course>, sqlx::Error> {
@@ -640,148 +777,448 @@ impl CourseExt for DBClient {
         Ok(courses)
     }
 
-    async fn get_courses_with_videos(
+    /// Mucho más eficiente: 3 queries en vez de un JOIN enorme.
+    async fn get_all_courses_with_modules(
         &self,
-    ) -> Result<Vec<CourseWithVideosDTO>, sqlx::Error> {
-        #[derive(sqlx::FromRow)]
-        struct CourseVideoRow {
-            // Datos del curso
-            course_id: uuid::Uuid,
-            title: String,
-            description: String,
-            long_description: Option<String>,
-            level: String,
-            price: f64,
-            duration: Option<String>,
-            students: i32,
-            rating: f32,
-            image: Option<String>,
-            category: String,
-            features: Option<serde_json::Value>,
-            course_created_at: chrono::DateTime<chrono::Utc>,
-            course_updated_at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Vec<CourseWithModulesDto>, sqlx::Error> {
+        // 1️⃣ Traer cursos
+        let courses = sqlx::query_as::<_, Course>(
+            r#"
+            SELECT id, title, description, long_description,
+                level, price, duration, students, rating, image,
+                category, features, created_at, updated_at
+            FROM courses
+            ORDER BY created_at DESC
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await?;
 
-            // Datos del video (pueden ser NULL si el curso no tiene videos)
-            video_id: Option<uuid::Uuid>,
-            video_title: Option<String>,
-            video_url: Option<String>,
-            video_duration: Option<String>,
-            video_order: Option<i32>,
-        }
+        // 2️⃣ Traer módulos
+        let modules = sqlx::query!(
+            r#"
+            SELECT id, course_id, title, "order"
+            FROM modules
+            ORDER BY "order" ASC
+            "#
+        )
+        .fetch_all(&self.pool)
+        .await?;
 
-        // 1️⃣ Consulta optimizada (una sola query)
-        let rows = sqlx
-            ::query_as::<_, CourseVideoRow>(
-                r#"
-        SELECT
-            c.id AS course_id,
-            c.title,
-            c.description,
-            c.long_description,
-            c.level,
-            c.price,
-            c.duration,
-            c.students,
-            c.rating,
-            c.image,
-            c.category,
-            c.features,
-            c.created_at AS course_created_at,
-            c.updated_at AS course_updated_at,
+        // 3️⃣ Traer lecciones
+        let lessons = sqlx::query!(
+            r#"
+            SELECT id, module_id, title, duration, "type",
+                content_url, description, "order"
+            FROM lessons
+            ORDER BY "order" ASC
+            "#
+        )
+        .fetch_all(&self.pool)
+        .await?;
 
-            v.id AS video_id,
-            v.title AS video_title,
-            v.url AS video_url,
-            v.duration AS video_duration,
-            v."order" AS video_order
+        // -------------- AGRUPACIÓN EFICIENTE ---------------
 
-        FROM courses c
-        LEFT JOIN videos v ON v.course_id = c.id
-        ORDER BY c.created_at DESC, v."order" ASC;
-        "#
-            )
-            .fetch_all(&self.pool).await?;
-
-        // 2️⃣ Agrupar por curso y construir CourseWithVideosDTO
         use std::collections::HashMap;
-        let mut course_map: HashMap<Uuid, (Course, Vec<Videos>)> = HashMap::new();
 
-        for row in rows {
-            // Crear el objeto Course
-            let course = Course {
-                id: row.course_id,
-                title: row.title,
-                description: row.description,
-                long_description: row.long_description,
-                level: row.level,
-                price: row.price,
-                duration: row.duration,
-                students: row.students,
-                rating: row.rating,
-                image: row.image,
-                category: row.category,
-                features: row.features,
-                created_at: row.course_created_at,
-                updated_at: row.course_updated_at,
-            };
-
-            // Si hay datos de video, crear el objeto Videos
-            let video = if let Some(video_id) = row.video_id {
-                Some(Videos {
-                    id: video_id,
-                    course_id: row.course_id,
-                    title: row.video_title.unwrap_or_default(),
-                    url: row.video_url.unwrap_or_default(),
-                    duration: row.video_duration,
-                    order: row.video_order,
-                })
-            } else {
-                None
-            };
-
-            // Agregar al mapa
-            let entry = course_map.entry(row.course_id).or_insert((course, Vec::new()));
-            if let Some(v) = video {
-                entry.1.push(v);
-            }
+        // Agrupar lecciones por módulo
+        let mut lessons_by_module: HashMap<Uuid, Vec<LessonDto>> = HashMap::new();
+        for row in lessons {
+            lessons_by_module
+                .entry(row.module_id)
+                .or_default()
+                .push(LessonDto {
+                    id: row.id,
+                    title: row.title,
+                    duration: row.duration,
+                    completed: None, // No tenemos info de completado aquí
+                    r#type: row.r#type,
+                    content_url: row.content_url,
+                    description: row.description,
+                    order: row.order,
+                });
         }
 
-        // 3️⃣ Convertir mapa → vector final
-        let result: Vec<CourseWithVideosDTO> = course_map
-            .into_iter()
-            .map(|(_, (course, videos))| CourseWithVideosDTO { course, videos })
-            .collect();
+        // Agrupar módulos por curso
+        let mut modules_by_course: HashMap<Uuid, Vec<ModuleWithLessonsDto>> = HashMap::new();
+        for m in modules {
+            modules_by_course
+                .entry(m.course_id)
+                .or_default()
+                .push(ModuleWithLessonsDto {
+                    id: m.id,
+                    title: m.title,
+                    order: m.order,
+                    lessons: lessons_by_module.remove(&m.id).unwrap_or_default(),
+                });
+        }
+
+        // Construir resultado final
+        let mut result = Vec::new();
+        for c in courses {
+            result.push(CourseWithModulesDto {
+                id: c.id,
+                title: c.title,
+                description: c.description,
+                long_description: c.long_description,
+                price: c.price,
+                level: c.level,
+                duration: c.duration,
+                students: c.students,
+                rating: c.rating,
+                image: c.image,
+                category: c.category,
+                features: c.features
+                        .as_ref()
+                        .and_then(|v| serde_json::from_value(v.clone()).ok()),
+                created_at: c.created_at,
+                updated_at: c.updated_at,
+                modules: modules_by_course.remove(&c.id).unwrap_or_default(),
+            });
+        }
 
         Ok(result)
     }
 
+    async fn get_course_with_videos(
+        &self,
+        course_id: Uuid,
+    ) -> Result<Option<CourseWithModulesDto>, sqlx::Error> {
+        
+        println!("DEBUG 1. Buscando curso con ID: {}", course_id);
+
+        // 1. OBTENER CURSO BASE
+        let course = sqlx::query_as::<_, Course>(
+            r#"
+            SELECT id, title, description, long_description,
+                level, price, duration, students, rating, image,
+                category, features, created_at, updated_at
+            FROM courses
+            WHERE id = $1
+            "#,
+        )
+        .bind(course_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        let course = match course {
+            Some(c) => c,
+            None => {
+                println!("DEBUG 1a. Curso no encontrado, retornando None.");
+                return Ok(None)
+            },
+        };
+        println!("DEBUG 1b. Curso base encontrado: {}", course.title);
+        
+        // 2. OBTENER MÓDULOS
+        let db_modules: Vec<Module> = sqlx::query_as!(
+            Module,
+            r#"
+            SELECT id, course_id, title, "order"
+            FROM modules
+            WHERE course_id = $1
+            ORDER BY "order" ASC
+            "#,
+            course_id
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        
+        println!("DEBUG 2. Módulos encontrados: {}", db_modules.len());
+
+
+        // 3. OBTENER TODAS LAS LECCIONES DE LOS MÓDULOS ENCONTRADOS
+        let module_ids: Vec<Uuid> = db_modules.iter().map(|m| m.id).collect();
+        println!("DEBUG 3a. IDs de módulos a buscar lecciones: {:?}", module_ids);
+        
+        let db_lessons: Vec<Lesson> = if module_ids.is_empty() {
+            println!("DEBUG 3b. No hay módulos, saltando la búsqueda de lecciones.");
+            vec![]
+        } else {
+            println!("DEBUG 3c. Ejecutando consulta de lecciones con {} módulos.", module_ids.len());
+            
+            // 🚨 VERIFICACIÓN CRÍTICA: La consulta asume que Lesson tiene #[sqlx(rename = "type")]
+            let lessons = sqlx::query_as::<_, Lesson>(
+                r#"
+                SELECT id, module_id, title, duration, "type",  
+                    content_url, description, "order", completed
+                FROM lessons
+                WHERE module_id = ANY($1) 
+                ORDER BY "order" ASC
+                "#
+            )
+            .bind(&module_ids as &[Uuid]) // Usamos el bind correcto para &[Uuid]
+            .fetch_all(&self.pool)
+            .await?; // ⬅️ Si falla, el pánico ocurre aquí.
+
+            println!("DEBUG 3d. Lecciones retornadas por DB: {}", lessons.len());
+            lessons
+        };
+
+        // 4. AGRUPAR LECCIONES EN MÓDULOS (Lógica de agrupamiento limpia)
+        println!("DEBUG 4. Iniciando agrupamiento de lecciones...");
+        let mut lessons_by_module: HashMap<Uuid, Vec<LessonDto>> = HashMap::new();
+        let mut total_lessons = 0;
+
+        for (index, lesson) in db_lessons.into_iter().enumerate() {
+            println!("DEBUG 4a. Procesando lección #{}: ID={}, Módulo={}", index + 1, lesson.id, lesson.module_id);
+            
+            total_lessons += 1;
+            
+            // Asumiendo que Lesson::r#type existe (ya sea por FromRow o #[sqlx(rename)])
+            let lesson_dto = LessonDto {
+                id: lesson.id,
+                title: lesson.title,
+                duration: lesson.duration,
+                completed: None, // Seguro contra la falta de columna
+                r#type: lesson.r#type,
+                content_url: lesson.content_url,
+                description: lesson.description,
+                order: lesson.order,
+            };
+            lessons_by_module.entry(lesson.module_id).or_insert_with(Vec::new).push(lesson_dto);
+        }
+        
+        println!("DEBUG 4b. Agrupamiento finalizado. Total de lecciones procesadas: {}", total_lessons);
+
+        // 5. CONSTRUIR DTO DE MÓDULOS
+        println!("DEBUG 5. Construyendo DTO de Módulos...");
+        let modules: Vec<ModuleWithLessonsDto> = db_modules.into_iter().map(|m| {
+            let lessons = lessons_by_module.remove(&m.id).unwrap_or_default();
+            
+            println!("DEBUG 5a. Módulo ID {} tiene {} lecciones.", m.id, lessons.len());
+
+            ModuleWithLessonsDto {
+                id: m.id,
+                title: m.title,
+                order: m.order,
+                lessons, 
+                // Añade otros campos si ModuleWithLessonsDto los tiene y los necesitas
+            }
+        }).collect();
+        
+        println!("DEBUG 5b. Módulos construidos: {}", modules.len());
+
+        // 6. ARMAR RESPUESTA FINAL
+        
+        // Deserialización de features
+        let features_result: Option<Vec<String>> = course.features.as_ref()
+            .and_then(|v| {
+                match serde_json::from_value(v.clone()) {
+                    Ok(f) => {
+                        println!("DEBUG 6a. Deserialización de features exitosa.");
+                        Some(f)
+                    },
+                    Err(e) => {
+                        eprintln!("ERROR: Falló la deserialización de features: {}", e);
+                        None
+                    }
+                }
+            });
+        
+        // Se asume la existencia de campos de resumen en CourseWithModulesDto
+        let result = CourseWithModulesDto {
+            id: course.id,
+            title: course.title.clone(),
+            description: course.description.clone(),
+            long_description: course.long_description.clone(),
+            price: course.price,
+            level: course.level.clone(),
+            duration: course.duration.clone(),
+            students: course.students,
+            rating: course.rating,
+            image: course.image.clone(),
+            category: course.category.clone(),
+            features: features_result,
+            created_at: course.created_at,
+            updated_at: course.updated_at,
+            modules,
+        };
+        
+        println!("DEBUG 7. Construcción final del DTO exitosa.");
+        
+        Ok(Some(result))
+    }
 
     async fn update_course(
         &self,
         course_id: Uuid,
-        title: Option<String>,
-        description: Option<String>,
-        price: Option<f64>,
-    ) -> Result<Course, sqlx::Error> {
-        let course = sqlx::query_as::<_, Course>(
-            r#"UPDATE courses 
-               SET title = COALESCE($2, title), 
-                   description = COALESCE($3, description), 
-                   price = COALESCE($4, price), 
-                   updated_at = $5 
-               WHERE id = $1 
-               RETURNING *"#,
-        )
-        .bind(course_id)
-        .bind(title)
-        .bind(description)
-        .bind(price)
-        .bind(Utc::now())
-        .fetch_one(&self.pool)
-        .await?;
+        dto: UpdateCourseDTO, // O el DTO que uses
+    ) -> Result<CourseWithModulesDto, sqlx::Error> {
+
+        // 1. VERIFICACIÓN DE ENTRADA Y BINDING DEL ID
+        // Este mensaje te dice qué ID estás intentando modificar.
+        println!("DEBUG: Intentando actualizar el curso con ID: {}", course_id);
+        // Puedes imprimir el DTO completo si es necesario, si usa #[derive(Debug)]
+        // println!("DEBUG: DTO recibido para actualización: {:?}", dto);
+
+        let now = Utc::now();
+        let features_json = dto.features
+            .as_ref() // Usamos .as_ref() ya que .features podría ser un Option
+            .and_then(|f| serde_json::to_value(f).ok());
         
-        Ok(course)
+        // --- QUERY DE ACTUALIZACIÓN ---
+        let result = sqlx::query_as::<_, Course>(
+            r#"
+            UPDATE courses SET
+                title = COALESCE($2, title),
+                description = COALESCE($3, description),
+                long_description = COALESCE($4, long_description),
+                level = COALESCE($5, level),
+                price = COALESCE($6, price),
+                duration = COALESCE($7, duration),
+                students = COALESCE($8, students),
+                rating = COALESCE($9, rating),
+                image = COALESCE($10, image),
+                category = COALESCE($11, category),
+                features = COALESCE($12::JSONB, features),
+                updated_at = $13
+            WHERE id = $1
+            RETURNING *
+            "#
+        )
+        .bind(course_id) // $1
+        .bind(&dto.title) // $2
+        .bind(&dto.description) // $3
+        .bind(&dto.long_description) // $4
+        .bind(&dto.level) // $5
+        .bind(dto.price) // $6 (Asegúrate que el tipo es f64/f32 o BigDecimal)
+        .bind(&dto.duration) // $7
+        .bind(dto.students) // $8
+        .bind(dto.rating) // $9 (Asegúrate que el tipo es f32/f64)
+        .bind(&dto.image) // $10
+        .bind(&dto.category) // $11
+        .bind(features_json) // $12
+        .bind(now) // $13
+        .fetch_optional(&self.pool) // Usamos fetch_optional para manejar 0 filas
+        .await;
+        // --- FIN DEL QUERY DE ACTUALIZACIÓN ---
+        // ==============================
+        // 2. ACTUALIZAR / CREAR MÓDULOS Y LECCIONES
+        // ==============================
+        if let Some(modules_dto) = dto.modules {
+            for (i, module_dto) in modules_dto.into_iter().enumerate() {
+                let module_id = module_dto.id.unwrap_or_else(Uuid::new_v4);  // Si el módulo no tiene ID, generamos uno nuevo
+                let order = module_dto.order.unwrap_or_else(|| (i + 1) as i32);  // Orden de módulo por defecto
+                let title = module_dto.title.unwrap_or_else(|| "Módulo sin título".to_string());  // Título por defecto
+
+                // Intentamos actualizar el módulo, si no existe lo insertamos
+                let module = if let Some(existing_module) =
+                    sqlx::query_as::<_, Module>(
+                        r#"
+                        UPDATE modules SET
+                            title = COALESCE($2, title),
+                            "order" = COALESCE($3, "order")
+                        WHERE id = $1
+                        RETURNING *
+                        "#,
+                    )
+                    .bind(module_id)
+                    .bind(&title)
+                    .bind(order)
+                    .fetch_optional(&self.pool)
+                    .await?
+                {
+                    existing_module
+                } else {
+                    // Insert módulo nuevo si no existía
+                    sqlx::query_as::<_, Module>(
+                        r#"
+                        INSERT INTO modules (id, course_id, title, "order")
+                        VALUES ($1, $2, $3, $4)
+                        RETURNING *
+                        "#,
+                    )
+                    .bind(module_id)
+                    .bind(course_id)
+                    .bind(&title)
+                    .bind(order)
+                    .fetch_one(&self.pool)
+                    .await?
+                };
+
+                // --- LECCIONES ---
+                if let Some(lessons_dto) = module_dto.lessons {
+                    for (j, lesson_dto) in lessons_dto.into_iter().enumerate() {
+                        let lesson_id = lesson_dto.id.unwrap_or_else(Uuid::new_v4);  // Si la lección no tiene ID, generamos uno nuevo
+                        let lesson_order = lesson_dto.order.unwrap_or_else(|| (j + 1) as i32);  // Orden por defecto
+
+                        if lesson_dto.id.is_some() {
+                            // UPDATE lección
+                            sqlx::query(
+                                r#"
+                                UPDATE lessons SET
+                                    title = COALESCE($2, title),
+                                    duration = COALESCE($3, duration),
+                                    "type" = COALESCE($4, "type"),
+                                    content_url = COALESCE($5, content_url),
+                                    description = COALESCE($6, description),
+                                    "order" = COALESCE($7, "order")
+                                WHERE id = $1
+                                "#,
+                            )
+                            .bind(lesson_id)
+                            .bind(lesson_dto.title.unwrap_or_else(|| "Título por defecto".to_string()))  // Título por defecto
+                            .bind(lesson_dto.duration.unwrap_or_else(|| "Duración por defecto".to_string()))  // Duración por defecto
+                            .bind(lesson_dto.r#type.unwrap_or_else(|| "Tipo por defecto".to_string()))  // Tipo por defecto
+                            .bind(lesson_dto.content_url.unwrap_or_else(|| "https://example.com/default-url".to_string()))  // Default URL
+                            .bind(lesson_dto.description.unwrap_or_else(|| "Descripción por defecto".to_string()))  // Descripción por defecto
+                            .bind(lesson_order)
+                            .execute(&self.pool)
+                            .await?;
+                        } else {
+                            // INSERT lección nueva
+                            sqlx::query(
+                                r#"
+                                INSERT INTO lessons (id, module_id, title, duration, "type", content_url, description, "order")
+                                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                                "#,
+                            )
+                            .bind(lesson_id)
+                            .bind(module.id)
+                            .bind(lesson_dto.title.unwrap_or_else(|| "Título por defecto".to_string()))  // Título por defecto
+                            .bind(lesson_dto.duration.unwrap_or_else(|| "Duración por defecto".to_string()))  // Duración por defecto
+                            .bind(lesson_dto.r#type.unwrap_or_else(|| "Tipo por defecto".to_string()))  // Tipo por defecto
+                            .bind(lesson_dto.content_url.unwrap_or_else(|| "https://example.com/default-url".to_string()))  // Default URL
+                            .bind(lesson_dto.description.unwrap_or_else(|| "Descripción por defecto".to_string()))  // Descripción por defecto
+                            .bind(lesson_order)
+                            .execute(&self.pool)
+                            .await?;
+                        }
+                    }
+                }
+            }
+        }
+
+        // ============================================================
+        // 3. REUTILIZAMOS LA FUNCIÓN get_all_courses_with_modules
+        // ============================================================
+        let updated_full_course = self.get_all_courses_with_modules().await?;
+
+        // 2. VERIFICACIÓN DEL RESULTADO
+        match result {
+            Ok(Some(course)) => {
+                println!("DEBUG: ÉXITO. Curso ID {} actualizado. Filas afectadas: 1", course_id);
+                Ok(updated_full_course.into_iter()
+                    .find(|c| c.id == course_id)
+                    .expect("Curso debería existir después de la actualización"))
+            },
+            Ok(None) => {
+                // Este es el error que estás viendo: rows_affected=0
+                println!("ERROR LÓGICO: No se encontró el curso con ID {} para actualizar. Filas afectadas: 0", course_id);
+                // Aquí puedes retornar un error de "No encontrado" (ej: sqlx::Error::RowNotFound)
+                // o un error personalizado de tu aplicación.
+                Err(sqlx::Error::RowNotFound) 
+            },
+            Err(e) => {
+                // Este es el error si la DB falla por restricción, tipo, o conexión
+                println!("ERROR SQL: Fallo en la ejecución del UPDATE para el curso ID {}: {:?}", course_id, e);
+                Err(e)
+            }
+        }
+        
     }
+
 
     async fn delete_course(&self, course_id: Uuid) -> Result<(), sqlx::Error> {
         sqlx::query("DELETE FROM courses WHERE id = $1")

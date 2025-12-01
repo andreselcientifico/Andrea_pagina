@@ -43,9 +43,12 @@ pub struct User {
     #[serde(rename = "profileImageUrl", skip_serializing_if = "Option::is_none")]
     pub profile_image_url: Option<String>,
     #[serde(rename = "createdAt")]
-    pub created_at: Option<DateTime<Utc>>,
+    pub created_at
+: Option<DateTime<Utc>>,
     #[serde(rename = "updatedAt")]
     pub updated_at: Option<DateTime<Utc>>,
+    #[serde(rename = "subscriptionExpiresAt")]
+    pub subscription_expires_at: Option<DateTime<Utc>>, 
 }
 
 #[allow(dead_code)]
@@ -74,39 +77,45 @@ pub struct UserSettings {
 // CURSOS Y PROGRESO
 // ===================== //
 #[allow(dead_code)]
-#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow, PartialEq)]
 pub struct Course {
     pub id: Uuid,
-    pub title: String,                        // antes: name
-    pub description: String,                  // descripción corta, obligatoria
-    pub long_description: Option<String>,    // descripción detallada
-    pub level: String,                        // "básico" | "intermedio" | "avanzado"
+    pub title: String,                       
+    pub description: String,                  
+    pub long_description: Option<String>,    
+    pub level: String,                        
     pub price: f64,
-    pub duration: Option<String>,             // ej: "4 semanas"
-    pub students: i32,                        // cantidad de estudiantes
-    pub rating: f32,                          // calificación promedio
-    pub image: Option<String>,                // URL de la imagen
-    pub category: String,                     // "básico" | "premium"
-    pub features: Option<serde_json::Value>,  // array JSON de strings
+    pub duration: Option<String>,            
+    pub students: i32,                      
+    pub rating: f32,                         
+    pub image: Option<String>,                
+    pub category: String,                     
+    pub features: Option<serde_json::Value>, 
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
 
-/// Representa un video perteneciente a un curso
+
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow, Clone)]
-pub struct Videos {
+pub struct Module {
     pub id: Uuid,
-
-    #[serde(rename = "courseId")]
     pub course_id: Uuid,
-
     pub title: String,
-    pub url: String,
+    pub order: i32, // orden dentro del curso
+}
 
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow, Clone)]
+pub struct Lesson {
+    pub id: Uuid,
+    pub module_id: Uuid,
+    pub title: String,
     pub duration: Option<String>,
-
-    #[serde(rename = "order")]
-    pub order: Option<i32>,
+    pub completed: Option<bool>,
+    #[sqlx(rename = "type")]
+    pub r#type: String, // video | exercise | quiz
+    pub content_url: Option<String>,
+    pub description: Option<String>,
+    pub order: i32, // orden dentro del módulo
 }
 
 

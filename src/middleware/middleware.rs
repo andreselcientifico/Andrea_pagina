@@ -1,6 +1,6 @@
-use std::{rc::Rc, sync::Arc};
+use std::{rc::Rc, sync::Arc, future::Future};
 use actix_web::{
-    Error, HttpMessage, HttpResponse, body::EitherBody, dev::{Service, ServiceRequest, ServiceResponse, Transform, forward_ready}, http::header
+    Error, HttpMessage, HttpResponse, body::{EitherBody}, dev::{Service, ServiceRequest, ServiceResponse, Transform, forward_ready}, http::header
 };
 use futures::{FutureExt, future::{LocalBoxFuture, Ready, ready}};
 use uuid::Uuid;
@@ -8,7 +8,7 @@ use std::pin::Pin;
 
 
 use crate::{
-    AppState, auth::auth::verify_jwt, db::db::UserExt, errors::error::{ErrorMessage, HttpError}, models::models::{User, UserRole}, utils::token::decode_token
+    AppState, auth::auth::verify_jwt, db::db::UserExt, errors::error::{ErrorMessage, HttpError}, models::models::{User, UserRole}, utils::token::{TokenClaims, decode_token}
 };
 
 /// Estructura que contendrá al usuario autenticado
@@ -152,7 +152,7 @@ where
     type Error = Error;
     type Transform = RoleCheckMiddleware<S>;
     type InitError = ();
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Transform, Self::InitError>>>>;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Transform, Self::InitError>> + 'static>>;
 
     fn new_transform(&self, service: S) -> Self::Future {
         let roles = self.roles.clone();
@@ -238,4 +238,131 @@ fn extract_user_role(req: &ServiceRequest) -> UserRole {
     let claims = decoded.unwrap();
 
     claims.role
+}
+
+
+
+#[derive(Clone)]
+pub enum RequiredAccess {
+    Role(UserRole),
+    PremiumAccess,
+}
+
+#[derive(Clone)]
+pub struct AccessCheck {
+    required: Vec<RequiredAccess>,
+}
+
+impl AccessCheck {
+    pub fn new(required: Vec<RequiredAccess>) -> Self {
+        Self { required }
+    }
+}
+
+impl<S, B> Transform<S, ServiceRequest> for AccessCheck
+where
+    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
+    B: 'static,
+{
+    type Response = ServiceResponse<EitherBody<B>>;
+    type Error = Error;
+    type Transform = AccessCheckMiddleware<S>;
+    type InitError = ();
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Transform, Self::InitError>> + 'static>>;
+
+    fn new_transform(&self, service: S) -> Self::Future {
+        let required = self.required.clone();
+        Box::pin(async move {
+            Ok(AccessCheckMiddleware {
+                service: Rc::new(service),
+                required,
+            })
+        })
+    }
+}
+
+pub struct AccessCheckMiddleware<S> {
+    service: Rc<S>,
+    required: Vec<RequiredAccess>,
+}
+
+impl<S, B> Service<ServiceRequest> for AccessCheckMiddleware<S>
+where
+    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
+    B: 'static,
+{
+    type Response = ServiceResponse<EitherBody<B>>;
+    type Error = Error;
+    type Future = LocalBoxFuture<'static, Result<Self::Response, Self::Error>>;
+
+    forward_ready!(service);
+
+    fn call(&self, req: ServiceRequest) -> Self::Future {
+        let srv = self.service.clone();
+        let required = self.required.clone();
+
+        async move {
+            let claims = extract_token_claims(&req);
+
+            if claims.is_none() {
+                let (req, _) = req.into_parts();
+                let res = HttpResponse::Unauthorized()
+                    .json(serde_json::json!({"error": "Token missing or invalid"}))
+                    .map_into_right_body();
+                return Ok(ServiceResponse::new(req, res));
+            }
+
+            let claims = claims.unwrap();
+
+            let mut allowed = false;
+
+            // Revisar cada requisito de acceso
+            for access in required.iter() {
+                match access {
+                    RequiredAccess::Role(role) => {
+                        if &claims.role == role {
+                            allowed = true;
+                        }
+                    }
+                    RequiredAccess::PremiumAccess => {
+                        let now_ts = chrono::Utc::now().timestamp();
+                        if claims.subscription_expires_at.unwrap_or(0) > now_ts {
+                            allowed = true;
+                        }
+                    }
+                }
+            }
+
+            if !allowed {
+                let (req, _) = req.into_parts();
+                let res = HttpResponse::Forbidden()
+                    .json(serde_json::json!({"error": "Permission denied"}))
+                    .map_into_right_body();
+                return Ok(ServiceResponse::new(req, res));
+            }
+
+            let res = srv.call(req).await?.map_into_left_body();
+            Ok(res)
+        }
+        .boxed_local()
+    }
+}
+
+/// 🔹 Igual que `extract_user_role` pero devuelve todos los claims
+fn extract_token_claims(req: &ServiceRequest) -> Option<TokenClaims> {
+    let app_data = req.app_data::<actix_web::web::Data<Arc<AppState>>>()?;
+    let app_state = app_data.as_ref();
+
+    let token = req.cookie("token")
+        .map(|c| c.value().to_string())
+        .or_else(|| {
+            req.headers()
+                .get(actix_web::http::header::AUTHORIZATION)
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.strip_prefix("Bearer "))
+                .map(|s| s.to_string())
+        })?;
+
+    let decoded = crate::utils::token::decode_token(token, app_state.env.decoding_key.clone()).ok()?;
+    Some(decoded)
 }
