@@ -220,6 +220,8 @@ pub struct CreateCourseDTO {
     #[serde(default)]
     pub features: Option<Vec<String>>, // JSONB -> Vec<String>
 
+    pub paypal_product_id: Option<String>,
+
     #[serde(default)]
     pub modules: Vec<CreateModuleDTO>, // array de videos
 }
@@ -477,6 +479,7 @@ pub struct FilterCourseDto {
     pub image: Option<String>,
     pub category: Option<String>,
     pub features: Option<Vec<String>>, // JSONB -> Vec<String>
+    pub paypal_product_id: Option<String>,
     #[serde(rename = "createdAt")]
     pub created_at: Option<DateTime<Utc>>,
     #[serde(rename = "updatedAt")]
@@ -500,6 +503,7 @@ impl FilterCourseDto {
             rating: Some(course.rating),
             image: course.image.clone(),
             category: Some(course.category.clone()),
+            paypal_product_id: course.paypal_product_id.clone(),
             features, // ya convertido a Option<Vec<String>>
             created_at: Some(course.created_at),
             updated_at: Some(course.updated_at),

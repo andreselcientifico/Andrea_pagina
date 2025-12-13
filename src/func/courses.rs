@@ -128,6 +128,11 @@ pub async fn create_course(
 ) -> Result<HttpResponse, HttpError> {
     body.validate().map_err(|e| HttpError::bad_request(e.to_string()))?;
 
+    // let product_id = app_state.paypal_client
+    //     .create_product(&body.title, &body.description)
+    //     .await
+    //     .map_err(|e| HttpError::server_error(e.to_string()))?;
+    
     let course = app_state.db_client.create_course(body).await.map_err(|e| {
         let s = e.to_string();
         if s.contains("duplicate") || s.contains("unique") {

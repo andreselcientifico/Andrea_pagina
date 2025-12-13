@@ -1,12 +1,11 @@
 use actix_web::{ 
-    HttpMessage, HttpRequest, HttpResponse, cookie::{Cookie, SameSite}, get, http::header, post, put, web::{ Data, Json, Query}
+    HttpMessage, HttpRequest, HttpResponse, cookie::{Cookie, SameSite}, get, http::header, post, put, web::{ Data, Json, Path, Query, ReqData}
 };
 use std::sync::Arc;
 use validator::Validate;
 use crate::{AppState, CachedToken, config::dtos::{FilterCourseDto, ForgotPasswordRequestDTO, VerifyEmailQueryDTO}, db::db::{CourseExt, UserAchievementExt, UserExt}};
 use serde::{Deserialize};
-use std::env;
-use serde_json::json;
+use serde_json::{Value, json};
 use chrono::{ Duration, Utc };
 use uuid::Uuid;
 use crate::mail::mails::{ send_verification_email, send_welcome_email, send_forgot_password_email };
@@ -43,7 +42,7 @@ async fn get_paypal_token(state: &AppState) -> String {
         .as_str()
         .expect("No se encontró access_token")
         .to_string();
-    let expires_in = json["expires_in"].as_i64().unwrap_or(300); // segundos
+    let expires_in = json["expires_in"].as_i64().unwrap_or(3600); // segundos
 
     // Guardar en cache
     let new_token = CachedToken {
@@ -362,23 +361,64 @@ pub async fn update_user_profile(
 // ===================== //
 //   Crear orden
 // ===================== //
-#[post("/create-order")]
-async fn created_order(state: Data<AppState>) -> HttpResponse {
-    let host_env = env::var("HOST").expect("HOST no está definido en .env");
+#[post("/courses/{course_id}/create-order")]
+async fn created_order(state: Data<AppState>, path: Path<(Uuid,)>, user: ReqData<JWTAuthMiddleware>) -> HttpResponse {
+    let course_id = path.into_inner().0;
+    let user_id = user.user.id;
+    
+    let course = match state.db_client.get_course(course_id).await {
+        Ok(c) => c,
+        Err(_) => {
+            return HttpResponse::NotFound().body("Curso no encontrado");
+        }
+    };
+
+    let (paypal_product_id , title, price) = match course {
+        Some(c) => (c.paypal_product_id.clone(), c.title.clone(), c.price),
+        None => {
+            return HttpResponse::NotFound().body("Curso no encontrado");
+        }
+    };
 
     let body =
         json!({
         "intent": "CAPTURE",
+        "payment_source": {
+            "paypal": {
+                "experience_context": {
+                    "payment_method_preference": "IMMEDIATE_PAYMENT_REQUIRED",
+                    "landing_page": "LOGIN",
+                    "user_action": "PAY_NOW",
+                    "return_url": format!("{}/paypal/capture?course_id={}", state.env.host, course_id),
+                    "cancel_url": format!("{}/paypal/cancel?course_id={}", state.env.host, course_id)
+                }
+            }
+        },
         "purchase_units": [{
-            "amount": { "currency_code": "USD", "value": "100.00" }
-        }],
-        "application_context": {
-            "brand_name": "Mi tienda en línea",
-            "landing_page": "NO_PREFERENCE",
-            "user_action": "PAY_NOW",
-            "return_url": format!("{}capture-order", host_env),
-            "cancel_url": format!("{}cancel-order", host_env)
-        }
+            "invoice_id": course_id.to_string(),
+            "custom_id": user_id.to_string(),
+            "amount": {
+                "currency_code": "USD",
+                "value": format!("{:.2}", price),
+                "breakdown": {
+                    "item_total": {
+                        "currency_code": "USD",
+                        "value": format!("{:.2}", price)
+                    }
+                }
+            },
+            "items": [{
+                "name": title,
+                "description": "Curso completo",
+                "unit_amount": {
+                    "currency_code": "USD",
+                    "value": format!("{:.2}", price)
+                },
+                "quantity": "1",
+                "category": "DIGITAL_GOODS",
+                "sku": paypal_product_id
+            }]
+        }]
     });
 
     let access_token = get_paypal_token(&state).await;
@@ -390,7 +430,11 @@ async fn created_order(state: Data<AppState>) -> HttpResponse {
         .send().await
         .expect("Error al enviar la solicitud a PayPal");
 
-    let response_json: serde_json::Value = res
+    if res.status().is_client_error() || res.status().is_server_error() {
+        return HttpResponse::InternalServerError().body("Error creating order");
+    }
+
+    let response_json: Value = res
         .json().await
         .expect("Error al leer la respuesta de PayPal");
 

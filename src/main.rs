@@ -9,12 +9,14 @@ mod utils;
 mod middleware;
 mod mail;
 
+use actix_web::Responder;
 use actix_web::middleware::Compress;
-use actix_web::{ web,web::Data,  App, HttpServer, HttpResponse };
+use actix_web::{ web,web::{Data, Json},  App, HttpServer, HttpResponse };
 use chrono::{ DateTime, Utc };
 use openssl::ssl::{ SslAcceptor, SslFiletype, SslMethod };
 use config::config::Config;
 use reqwest::Client;
+use serde_json::Value;
 use std::sync::Arc ;
 use tokio::sync::Mutex;
 use db::db::DBClient;
@@ -50,10 +52,21 @@ impl CachedToken {
     }
 }
 
-async fn ping() -> HttpResponse {
-    HttpResponse::Ok().json(serde_json::json!({ "status": "ok" }))
-}
+pub async fn ping(
+    Json(json): Json<Value>,
+) -> impl Responder {
+    // Imprime el JSON recibido en formato pretty
+    match serde_json::to_string_pretty(&json) {
+        Ok(pretty) => println!("Json pretty:\n{}", pretty),
+        Err(e) => eprintln!("Error convirtiendo JSON a pretty: {}", e),
+    }
 
+    // Respuesta HTTP
+    HttpResponse::Ok().json(serde_json::json!({
+        "status": "ok",
+        "message": "pong",
+    }))
+}
 
 // ===================== //
 //        MAIN
@@ -61,11 +74,15 @@ async fn ping() -> HttpResponse {
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     dotenvy::dotenv().expect("No se pudo cargar el archivo .env");
+    let current_dir = std::env::current_dir().expect("No se pudo obtener el directorio actual");
     env_logger::Builder::from_env(Env::default().default_filter_or("debug")).init();
 
+    let key_path = current_dir.join("key.pem");
+    let cert_path = current_dir.join("cert.pem");
+
     let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
-    builder.set_private_key_file("key.pem", SslFiletype::PEM).unwrap();
-    builder.set_certificate_chain_file("cert.pem").unwrap();
+    builder.set_private_key_file(key_path, SslFiletype::PEM).expect("No se pudo leer key.pem");
+    builder.set_certificate_chain_file(cert_path).expect("No se pudo leer cert.pem");
    
     // Crear conexión a Postgres
     let pool = match PgPoolOptions::new()
@@ -107,8 +124,8 @@ async fn main() -> std::io::Result<()> {
                 .supports_credentials()
                 .max_age(3600)
             )
-            .route("/ping", web::get().to(ping))
             .app_data(Data::new(app_state.clone()))
+            .route("/ping", web::post().to(ping))
             .service(func::handlers::register_user)
             .service(func::handlers::login_user)
             .service(func::handlers::verify_email)
@@ -129,6 +146,6 @@ async fn main() -> std::io::Result<()> {
     })
         .workers(8)
         // .bind_openssl("127.0.0.1:8000", builder)?
-        .bind("127.0.0.1:8000")?
+        .bind("0.0.0.0:8000")?
         .run().await
 }

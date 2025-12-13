@@ -90,7 +90,8 @@ pub struct Course {
     pub rating: f32,                         
     pub image: Option<String>,                
     pub category: String,                     
-    pub features: Option<serde_json::Value>, 
+    pub features: Option<serde_json::Value>,
+    pub paypal_product_id: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

@@ -13,6 +13,7 @@ pub struct Config {
     pub decoding_key: DecodingKey,
     pub paypal_client_id: String,
     pub paypal_secret: String,
+    pub host: String,
     pub port: u16,
 }
 
@@ -29,6 +30,7 @@ impl Config {
         let decoding_key = DecodingKey::from_rsa_pem(&public_key).expect("Error al construir DecodingKey");
         let paypal_client_id = env::var("PAYPAL_API_CLIENT_ID").expect("PAYPAL_API_CLIENT_ID no definido");
         let paypal_secret = env::var("PAYPAL_API_SECRET").expect("PAYPAL_API_SECRET no definido");
+        let host = env::var("HOST").unwrap_or("localhost".to_string());
 
         Config {
             database_url,
@@ -40,6 +42,7 @@ impl Config {
             decoding_key,
             paypal_client_id,
             paypal_secret,
+            host,
             port: 8000,
         }
     }
