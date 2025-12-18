@@ -2,10 +2,11 @@ use std::collections::HashMap;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use sqlx::{Pool, Postgres};
+use openssl::string;
+use sqlx::{Pool, Postgres, query_scalar, query_as, query, Error};
 use uuid::Uuid;
 
-use crate::{config::dtos::{CourseWithModulesDto, CreateCourseDTO, CreateLessonDTO, CreateModuleDTO, LessonDto, ModuleWithLessonsDto, UpdateCourseDTO},  models::models::{Achievement, Course, Lesson, Module, Payment, User, UserAchievement, UserRole}};
+use crate::{config::dtos::{CourseWithModulesDto, CreateCourseDTO, CreateLessonDTO, CreateModuleDTO, LessonDto, ModuleWithLessonsDto, UpdateCourseDTO},  models::models::{Achievement, Course, CourseProgress, Lesson, Module, Payment, User, UserAchievement, UserCourse, UserRole}};
 
 #[derive(Debug, Clone)]
 pub struct DBClient {
@@ -26,13 +27,13 @@ pub trait UserExt {
         name: Option<&str>,
         email: Option<&str>,
         token: Option<&str>,
-    ) -> Result<Option<User>, sqlx::Error>;
+    ) -> Result<Option<User>, Error>;
 
     async fn get_users(
         &self,
         page: u32,
         limit: usize,
-    ) -> Result<Vec<User>, sqlx::Error>;
+    ) -> Result<Vec<User>, Error>;
 
     async fn save_user<T: Into<String> + Send>(
         &self,
@@ -42,27 +43,27 @@ pub trait UserExt {
         verification_token: T,
         token_expiry: Option<DateTime<Utc>>,
         role: Option<UserRole>,
-    ) -> Result<User, sqlx::Error>;
+    ) -> Result<User, Error>;
 
-    async fn get_user_count(&self) -> Result<i64, sqlx::Error>;
+    async fn get_user_count(&self) -> Result<i64, Error>;
 
     async fn update_user_name<T: Into<String> + Send>(
         &self,
         user_id: Uuid,
         name: T,
-    ) -> Result<User, sqlx::Error>;
+    ) -> Result<User, Error>;
 
     async fn update_user_role(
         &self,
         user_id: Uuid,
         role: UserRole,
-    ) -> Result<User, sqlx::Error>;
+    ) -> Result<User, Error>;
 
     async fn update_user_password(
         &self,
         user_id: Uuid,
         password: String,
-    ) -> Result<User, sqlx::Error>;
+    ) -> Result<User, Error>;
 
     async fn update_user_profile(
         &self,
@@ -73,13 +74,13 @@ pub trait UserExt {
         bio: Option<String>,
         birth_date: Option<chrono::NaiveDate>,
         profile_image_url: Option<String>,
-    ) -> Result<User, sqlx::Error>;
+    ) -> Result<User, Error>;
 
     #[allow(dead_code)]
     async fn verifed_token(
         &self,
         token: &str,
-    ) -> Result<(), sqlx::Error>;
+    ) -> Result<(), Error>;
 
     #[allow(dead_code)]
     async fn add_verifed_token(
@@ -87,7 +88,7 @@ pub trait UserExt {
         user_id: Uuid,
         token: &str,
         expires_at: DateTime<Utc>,
-    ) -> Result<(), sqlx::Error>;
+    ) -> Result<(), Error>;
 }
 
 #[async_trait]
@@ -98,10 +99,10 @@ impl UserExt for DBClient {
     name: Option<&str>,
     email: Option<&str>,
     token: Option<&str>,
-) -> Result<Option<User>, sqlx::Error> {
+) -> Result<Option<User>, Error> {
     let mut user: Option<User> = None;
     if let Some(user_id) = user_id {
-        user = sqlx::query_as!(
+        user = query_as!(
             User,
             r#"
             SELECT 
@@ -131,7 +132,7 @@ impl UserExt for DBClient {
         })?
         ;
     } else if let Some(name) = name {
-        user = sqlx::query_as!(
+        user = query_as!(
             User,
             r#"
             SELECT 
@@ -161,7 +162,7 @@ impl UserExt for DBClient {
         })?
         ;
     } else if let Some(email) = email {
-        user = sqlx::query_as!(
+        user = query_as!(
             User,
             r#"
             SELECT 
@@ -191,7 +192,7 @@ impl UserExt for DBClient {
         })?
         ;
     } else if let Some(token) = token {
-        user = sqlx::query_as!(
+        user = query_as!(
             User,
             r#"
             SELECT 
@@ -229,10 +230,10 @@ impl UserExt for DBClient {
         &self,
         page: u32,
         limit: usize,
-    ) -> Result<Vec<User>, sqlx::Error> {
+    ) -> Result<Vec<User>, Error> {
         let offset = (page - 1) * limit as u32;
 
-        let users = sqlx::query_as!(
+        let users = query_as!(
             User,
             r#"SELECT 
                 id, 
@@ -273,9 +274,9 @@ impl UserExt for DBClient {
         verification_token: T,
         token_expiry: Option<DateTime<Utc>>,
         role: Option<UserRole>,
-    ) -> Result<User, sqlx::Error> {
+    ) -> Result<User, Error> {
         let role = role.unwrap_or(UserRole::User);
-        let user = sqlx::query_as!(
+        let user = query_as!(
             User,
             r#"
             INSERT INTO users (name, email, password, verification_token, token_expiry, role) 
@@ -314,7 +315,7 @@ impl UserExt for DBClient {
         Ok(user)
     }
 
-    async fn get_user_count(&self) -> Result<i64, sqlx::Error> {
+    async fn get_user_count(&self) -> Result<i64, Error> {
         let count = sqlx::query_scalar!(
             r#"SELECT COUNT(*) FROM users"#
         )
@@ -332,8 +333,8 @@ impl UserExt for DBClient {
         &self,
         user_id: Uuid,
         new_name: T
-    ) -> Result<User, sqlx::Error> {
-        let user = sqlx::query_as!(
+    ) -> Result<User, Error> {
+        let user = query_as!(
             User,
             r#"
             UPDATE users
@@ -373,8 +374,8 @@ impl UserExt for DBClient {
         &self,
         user_id: Uuid,
         new_role: UserRole
-    ) -> Result<User, sqlx::Error> {
-        let user = sqlx::query_as!(
+    ) -> Result<User, Error> {
+        let user = query_as!(
             User,
             r#"
             UPDATE users
@@ -419,8 +420,8 @@ impl UserExt for DBClient {
         bio: Option<String>,
         birth_date: Option<chrono::NaiveDate>,
         profile_image_url: Option<String>,
-    ) -> Result<User, sqlx::Error> {
-        let user = sqlx::query_as!(
+    ) -> Result<User, Error> {
+        let user = query_as!(
             User,
             r#"
             UPDATE users
@@ -473,8 +474,8 @@ impl UserExt for DBClient {
         &self,
         user_id: Uuid,
         new_password: String
-    ) -> Result<User, sqlx::Error> {
-        let user = sqlx::query_as!(
+    ) -> Result<User, Error> {
+        let user = query_as!(
             User,
             r#"
             UPDATE users
@@ -513,7 +514,7 @@ impl UserExt for DBClient {
     async fn verifed_token(
         &self,
         token: &str,
-    ) -> Result<(), sqlx::Error> {
+    ) -> Result<(), Error> {
         let _ =sqlx::query!(
             r#"
             UPDATE users
@@ -535,7 +536,7 @@ impl UserExt for DBClient {
         user_id: Uuid,
         token: &str,
         token_expiry: DateTime<Utc>,
-    ) -> Result<(), sqlx::Error> {
+    ) -> Result<(), Error> {
         let _ = sqlx::query!(
             r#"
             UPDATE users
@@ -565,37 +566,37 @@ pub trait CourseExt {
     async fn create_course(
         &self,
         dto: CreateCourseDTO,
-    ) -> Result<CreateCourseDTO, sqlx::Error>;
+    ) -> Result<CreateCourseDTO, Error>;
 
-    async fn get_course(&self, course_id: Uuid) -> Result<Option<Course>, sqlx::Error>;
+    async fn get_course(&self, course_id: Uuid) -> Result<Option<Course>, Error>;
 
-    async fn get_user_courses(&self, user_id: Uuid) -> Result<Vec<Course>, sqlx::Error>;
+    async fn get_user_courses(&self, user_id: Uuid) -> Result<Vec<Course>, Error>;
 
     async fn get_courses(
         &self,
         page: u32,
         limit: usize,
-    ) -> Result<Vec<Course>, sqlx::Error>;
+    ) -> Result<Vec<Course>, Error>;
 
     async fn get_all_courses_with_modules(
         &self,
-    ) -> Result<Vec<CourseWithModulesDto>, sqlx::Error> ;
+    ) -> Result<Vec<CourseWithModulesDto>, Error> ;
 
     async fn get_course_with_videos(
     &self,
     course_id: Uuid,
-) -> Result<Option<CourseWithModulesDto>, sqlx::Error>;
+) -> Result<Option<CourseWithModulesDto>, Error>;
 
     async fn update_course(
         &self,
         course_id: Uuid,
         dto: UpdateCourseDTO,
-    ) -> Result<CourseWithModulesDto, sqlx::Error>;
+    ) -> Result<CourseWithModulesDto, Error>;
 
-    async fn delete_course(&self, course_id: Uuid) -> Result<(), sqlx::Error>;
+    async fn delete_course(&self, course_id: Uuid) -> Result<(), Error>;
 
     #[allow(dead_code)]
-    async fn get_course_count(&self) -> Result<i64, sqlx::Error>;
+    async fn get_course_count(&self) -> Result<i64, Error>;
 }
 
 // ===================== //
@@ -606,7 +607,7 @@ impl CourseExt for DBClient {
     async fn create_course(
         &self,
         dto: CreateCourseDTO,
-    ) -> Result<CreateCourseDTO, sqlx::Error> {
+    ) -> Result<CreateCourseDTO, Error> {
         let course_id = Uuid::new_v4();
         let now = Utc::now();
 
@@ -761,7 +762,7 @@ impl CourseExt for DBClient {
         })
     }
 
-    async fn get_course(&self, course_id: Uuid) -> Result<Option<Course>, sqlx::Error> {
+    async fn get_course(&self, course_id: Uuid) -> Result<Option<Course>, Error> {
         let course = sqlx::query_as::<_, Course>(
             r#"SELECT * FROM courses WHERE id = $1"#,
         )
@@ -776,7 +777,7 @@ impl CourseExt for DBClient {
         Ok(course)
     }
 
-    async fn get_user_courses(&self, user_id: Uuid) -> Result<Vec<Course>, sqlx::Error> {
+    async fn get_user_courses(&self, user_id: Uuid) -> Result<Vec<Course>, Error> {
         let courses = sqlx::query_as::<_, Course>(
             r#"
             SELECT c.*
@@ -801,7 +802,7 @@ impl CourseExt for DBClient {
         &self,
         page: u32,
         limit: usize,
-    ) -> Result<Vec<Course>, sqlx::Error> {
+    ) -> Result<Vec<Course>, Error> {
         let offset = ((page - 1) * limit as u32) as i64;
         let courses = sqlx::query_as::<_, Course>(
             r#"SELECT * FROM courses 
@@ -820,7 +821,7 @@ impl CourseExt for DBClient {
     /// Mucho más eficiente: 3 queries en vez de un JOIN enorme.
     async fn get_all_courses_with_modules(
         &self,
-    ) -> Result<Vec<CourseWithModulesDto>, sqlx::Error> {
+    ) -> Result<Vec<CourseWithModulesDto>, Error> {
         // 1️⃣ Traer cursos
         let rows = sqlx::query!(
             r#"
@@ -934,7 +935,7 @@ impl CourseExt for DBClient {
     async fn get_course_with_videos(
         &self,
         course_id: Uuid,
-    ) -> Result<Option<CourseWithModulesDto>, sqlx::Error> {
+    ) -> Result<Option<CourseWithModulesDto>, Error> {
 
         let rows = sqlx::query!(
             r#"
@@ -1051,7 +1052,7 @@ impl CourseExt for DBClient {
         &self,
         course_id: Uuid,
         dto: UpdateCourseDTO, // O el DTO que uses
-    ) -> Result<CourseWithModulesDto, sqlx::Error> {
+    ) -> Result<CourseWithModulesDto, Error> {
         let now = Utc::now();
 
         // Serializamos módulos y lecciones a JSON y los mandamos como 2 arrays.
@@ -1190,7 +1191,7 @@ impl CourseExt for DBClient {
     }
 
 
-    async fn delete_course(&self, course_id: Uuid) -> Result<(), sqlx::Error> {
+    async fn delete_course(&self, course_id: Uuid) -> Result<(), Error> {
         sqlx::query("DELETE FROM courses WHERE id = $1")
             .bind(course_id)
             .execute(&self.pool)
@@ -1203,7 +1204,7 @@ impl CourseExt for DBClient {
         Ok(())
     }
 
-    async fn get_course_count(&self) -> Result<i64, sqlx::Error> {
+    async fn get_course_count(&self) -> Result<i64, Error> {
         let result = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM courses")
             .fetch_one(&self.pool)
             .await.map_err(|e| {
@@ -1225,29 +1226,29 @@ pub trait PaymentExt {
         amount: f64,
         payment_method: String,
         transaction_id: String,
-    ) -> Result<Payment, sqlx::Error>;
+    ) -> Result<Payment, Error>;
 
-    async fn get_payment(&self, payment_id: Uuid) -> Result<Option<Payment>, sqlx::Error>;
+    async fn get_payment(&self, payment_id: Uuid) -> Result<Option<Payment>, Error>;
 
-    async fn get_user_payments(&self, user_id: Uuid) -> Result<Vec<Payment>, sqlx::Error>;
+    async fn get_user_payments(&self, user_id: Uuid) -> Result<Vec<Payment>, Error>;
 
     #[allow(dead_code)]
-    async fn get_course_payments(&self, course_id: Uuid) -> Result<Vec<Payment>, sqlx::Error>;
+    async fn get_course_payments(&self, course_id: Uuid) -> Result<Vec<Payment>, Error>;
 
     async fn update_payment_status(
         &self,
         payment_id: Uuid,
         status: String,
-    ) -> Result<Payment, sqlx::Error>;
+    ) -> Result<Payment, Error>;
 
     async fn check_user_course_payment(
         &self,
         user_id: Uuid,
         course_id: Uuid,
-    ) -> Result<Option<Payment>, sqlx::Error>;
+    ) -> Result<Option<Payment>, Error>;
 
     #[allow(dead_code)]
-    async fn get_payment_count(&self) -> Result<i64, sqlx::Error>;
+    async fn get_payment_count(&self) -> Result<i64, Error>;
 }
 
 #[async_trait]
@@ -1259,7 +1260,7 @@ impl PaymentExt for DBClient {
         amount: f64,
         payment_method: String,
         transaction_id: String,
-    ) -> Result<Payment, sqlx::Error> {
+    ) -> Result<Payment, Error> {
         let id = Uuid::new_v4();
         let now = Utc::now();
         
@@ -1285,7 +1286,7 @@ impl PaymentExt for DBClient {
         Ok(payment)
     }
 
-    async fn get_payment(&self, payment_id: Uuid) -> Result<Option<Payment>, sqlx::Error> {
+    async fn get_payment(&self, payment_id: Uuid) -> Result<Option<Payment>, Error> {
         let payment = sqlx::query_as::<_, Payment>(
             r#"SELECT id, user_id, course_id, amount, payment_method, transaction_id, status, created_at, updated_at 
                FROM payments WHERE id = $1"#,
@@ -1301,7 +1302,7 @@ impl PaymentExt for DBClient {
         Ok(payment)
     }
 
-    async fn get_user_payments(&self, user_id: Uuid) -> Result<Vec<Payment>, sqlx::Error> {
+    async fn get_user_payments(&self, user_id: Uuid) -> Result<Vec<Payment>, Error> {
         let payments = sqlx::query_as::<_, Payment>(
             r#"SELECT id, user_id, course_id, amount, payment_method, transaction_id, status, created_at, updated_at 
                FROM payments WHERE user_id = $1 ORDER BY created_at DESC"#,
@@ -1317,7 +1318,7 @@ impl PaymentExt for DBClient {
         Ok(payments)
     }
 
-    async fn get_course_payments(&self, course_id: Uuid) -> Result<Vec<Payment>, sqlx::Error> {
+    async fn get_course_payments(&self, course_id: Uuid) -> Result<Vec<Payment>, Error> {
         let payments = sqlx::query_as::<_, Payment>(
             r#"SELECT id, user_id, course_id, amount, payment_method, transaction_id, status, created_at, updated_at 
                FROM payments WHERE course_id = $1 ORDER BY created_at DESC"#,
@@ -1337,7 +1338,7 @@ impl PaymentExt for DBClient {
         &self,
         payment_id: Uuid,
         status: String,
-    ) -> Result<Payment, sqlx::Error> {
+    ) -> Result<Payment, Error> {
         let payment = sqlx::query_as::<_, Payment>(
             r#"UPDATE payments SET status = $2, updated_at = $3 WHERE id = $1 
                RETURNING id, user_id, course_id, amount, payment_method, transaction_id, status, created_at, updated_at"#,
@@ -1359,7 +1360,7 @@ impl PaymentExt for DBClient {
         &self,
         user_id: Uuid,
         course_id: Uuid,
-    ) -> Result<Option<Payment>, sqlx::Error> {
+    ) -> Result<Option<Payment>, Error> {
         let payment = sqlx::query_as::<_, Payment>(
             r#"SELECT id, user_id, course_id, amount, payment_method, transaction_id, status, created_at, updated_at 
                FROM payments WHERE user_id = $1 AND course_id = $2 AND status = 'completed' LIMIT 1"#,
@@ -1376,7 +1377,7 @@ impl PaymentExt for DBClient {
         Ok(payment)
     }
 
-    async fn get_payment_count(&self) -> Result<i64, sqlx::Error> {
+    async fn get_payment_count(&self) -> Result<i64, Error> {
         let result = sqlx::query_scalar::<_, i64>(
             "SELECT COUNT(*) FROM payments WHERE status = 'completed'"
         )
@@ -1400,21 +1401,21 @@ pub trait AchievementExt {
         name: T,
         description: Option<T>,
         icon: Option<T>,
-    ) -> Result<Achievement, sqlx::Error>;
+    ) -> Result<Achievement, Error>;
 
     /// Obtiene todos los logros existentes (paginados).
     async fn get_achievements(
         &self,
         page: u32,
         limit: usize,
-    ) -> Result<Vec<Achievement>, sqlx::Error>;
+    ) -> Result<Vec<Achievement>, Error>;
 
     /// Obtiene un logro por su ID.
     async fn get_achievement(&self, achievement_id: Uuid)
-        -> Result<Option<Achievement>, sqlx::Error>;
+        -> Result<Option<Achievement>, Error>;
 
     /// Elimina un logro existente.
-    async fn delete_achievement(&self, achievement_id: Uuid) -> Result<(), sqlx::Error>;
+    async fn delete_achievement(&self, achievement_id: Uuid) -> Result<(), Error>;
 }
 
 /// Extensión para gestionar los logros obtenidos por usuarios.
@@ -1426,7 +1427,7 @@ pub trait UserAchievementExt {
         &self,
         user_id: Uuid,
         achievement_id: Uuid,
-    ) -> Result<UserAchievement, sqlx::Error>;
+    ) -> Result<UserAchievement, Error>;
 
     /// Marca un logro como ganado.
     #[allow(dead_code)]
@@ -1434,13 +1435,13 @@ pub trait UserAchievementExt {
         &self,
         user_id: Uuid,
         achievement_id: Uuid,
-    ) -> Result<UserAchievement, sqlx::Error>;
+    ) -> Result<UserAchievement, Error>;
 
     /// Obtiene todos los logros de un usuario.
     async fn get_user_achievements(
         &self,
         user_id: Uuid,
-    ) -> Result<Vec<Achievement>, sqlx::Error>;
+    ) -> Result<Vec<Achievement>, Error>;
 
     /// Verifica si un usuario ya ha ganado un logro específico.
     #[allow(dead_code)]
@@ -1448,7 +1449,7 @@ pub trait UserAchievementExt {
         &self,
         user_id: Uuid,
         achievement_id: Uuid,
-    ) -> Result<bool, sqlx::Error>;
+    ) -> Result<bool, Error>;
 }
 
 /// Implementación para la conexión principal del sistema (`DBClient`).
@@ -1459,7 +1460,7 @@ impl AchievementExt for DBClient {
         name: T,
         description: Option<T>,
         icon: Option<T>,
-    ) -> Result<Achievement, sqlx::Error> {
+    ) -> Result<Achievement, Error> {
         let id = Uuid::new_v4();
         let now = Utc::now();
 
@@ -1489,7 +1490,7 @@ impl AchievementExt for DBClient {
         &self,
         page: u32,
         limit: usize,
-    ) -> Result<Vec<Achievement>, sqlx::Error> {
+    ) -> Result<Vec<Achievement>, Error> {
         let offset = ((page - 1) * limit as u32) as i64;
 
         let achievements = sqlx::query_as::<_, Achievement>(
@@ -1513,7 +1514,7 @@ impl AchievementExt for DBClient {
     }
 
     async fn get_achievement(&self, achievement_id: Uuid)
-        -> Result<Option<Achievement>, sqlx::Error> {
+        -> Result<Option<Achievement>, Error> {
         let achievement = sqlx::query_as::<_, Achievement>(
             r#"
             SELECT id, name, description, icon, created_at
@@ -1532,7 +1533,7 @@ impl AchievementExt for DBClient {
         Ok(achievement)
     }
 
-    async fn delete_achievement(&self, achievement_id: Uuid) -> Result<(), sqlx::Error> {
+    async fn delete_achievement(&self, achievement_id: Uuid) -> Result<(), Error> {
         sqlx::query("DELETE FROM achievements WHERE id = $1")
             .bind(achievement_id)
             .execute(&self.pool)
@@ -1551,7 +1552,7 @@ impl UserAchievementExt for DBClient {
         &self,
         user_id: Uuid,
         achievement_id: Uuid,
-    ) -> Result<UserAchievement, sqlx::Error> {
+    ) -> Result<UserAchievement, Error> {
         let id = Uuid::new_v4();
 
         let user_achievement = sqlx::query_as::<_, UserAchievement>(
@@ -1578,7 +1579,7 @@ impl UserAchievementExt for DBClient {
         &self,
         user_id: Uuid,
         achievement_id: Uuid,
-    ) -> Result<UserAchievement, sqlx::Error> {
+    ) -> Result<UserAchievement, Error> {
         let user_achievement = sqlx::query_as::<_, UserAchievement>(
             r#"
             UPDATE user_achievements
@@ -1603,7 +1604,7 @@ impl UserAchievementExt for DBClient {
     async fn get_user_achievements(
         &self,
         user_id: Uuid,
-    ) -> Result<Vec<Achievement>, sqlx::Error> {
+    ) -> Result<Vec<Achievement>, Error> {
         let achievements = sqlx::query_as::<_, Achievement>(
             r#"
             SELECT 
@@ -1635,7 +1636,7 @@ impl UserAchievementExt for DBClient {
         &self,
         user_id: Uuid,
         achievement_id: Uuid,
-    ) -> Result<bool, sqlx::Error> {
+    ) -> Result<bool, Error> {
         let exists = sqlx::query_scalar::<_, bool>(
             r#"
             SELECT EXISTS(
@@ -1655,4 +1656,287 @@ impl UserAchievementExt for DBClient {
 
         Ok(exists)
     }
+}
+
+
+
+#[async_trait]
+pub trait course_purchaseExt {
+    async fn register_course_purchase(
+        &self,
+        user_id: Uuid,
+        course_id: Uuid,
+        transaction_id: String,
+        amount: f64,
+    ) -> Result<(), Error>;
+
+    async fn check_user_course_access (
+        &self,
+        user_id: Uuid,
+        course_id: Uuid,
+    ) -> Result<Option<bool>, Error>;
+
+    async fn get_user_purchased_courses(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<Uuid>, Error>;
+
+    async fn get_user_course_progress(
+        &self,
+        user_id: Uuid,
+        course_id: Uuid,
+    ) -> Result<Option<CourseProgress>, Error>;
+
+    async fn update_course_progress(
+        &self,
+        user_id: Uuid,
+        course_id: Uuid,
+        completed_lessons: i32,
+        progress_percentage: f32,
+    ) -> Result<(), Error>;
+}
+
+#[async_trait]
+impl course_purchaseExt for DBClient {
+
+    async fn register_course_purchase(
+        &self,
+        user_id: Uuid,
+        course_id: Uuid,
+        transaction_id: String,
+        amount: f64
+    ) -> Result<(), Error> {
+        // Verificar que el curso existe
+        let course_exists = query_scalar!(
+            "SELECT EXISTS(SELECT 1 FROM courses WHERE id = $1)",
+            course_id
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        if !course_exists.unwrap_or(false) {
+            return Err(Error::RowNotFound);
+        }
+
+        // Registrar la compra en la tabla payments y user_courses
+        query_as::<_, Payment>(
+            r#"
+            INSERT INTO payments
+            (id, user_id, course_id, amount, payment_method, transaction_id, status, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            RETURNING id, user_id, course_id, amount, payment_method, transaction_id, status, created_at, updated_at
+            "#
+        )
+        .bind(Uuid::new_v4())
+        .bind(user_id)
+        .bind(course_id)
+        .bind(amount)
+        .bind("paypal")
+        .bind(transaction_id)
+        .bind("completed")
+        .bind(Utc::now())
+        .bind(Utc::now())
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| {
+            eprintln!("ERROR: {}", e);
+            e
+        })?;
+
+        // Registrar en user_courses si no existe
+        let user_course_exists = query_scalar!(
+            "SELECT EXISTS(SELECT 1 FROM user_courses WHERE user_id = $1 AND course_id = $2)",
+            user_id,
+            course_id
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        if !user_course_exists.unwrap_or(false) {
+            query!(
+                r#"
+                INSERT INTO user_courses (id, user_id, course_id, purchased_at)
+                VALUES ($1, $2, $3, $4)
+                "#,
+                Uuid::new_v4(),
+                user_id,
+                course_id,
+                Utc::now(),
+            )
+            .execute(&self.pool)
+            .await?;
+        }
+
+        // Inicializar progreso del curso si no existe
+        let progress_exists = query_scalar!(
+            "SELECT EXISTS(SELECT 1 FROM course_progress WHERE user_id = $1 AND course_id = $2)",
+            user_id,
+            course_id
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        if !progress_exists.unwrap_or(false) {
+            // Obtener el número total de lecciones del curso
+            let total_lessons = query_scalar!(
+                r#"
+                SELECT COUNT(l.*)
+                FROM courses c
+                JOIN modules m ON m.course_id = c.id
+                JOIN lessons l ON l.module_id = m.id
+                WHERE c.id = $1
+                "#,
+                course_id
+            )
+            .fetch_one(&self.pool)
+            .await?;
+
+            let total_lessons_i32 = total_lessons.map(|v| v as i32);
+
+            query!(
+                r#"
+                INSERT INTO course_progress
+                (id, user_id, course_id, progress_percentage, total_lessons, completed_lessons, last_accessed, created_at, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                "#,
+                Uuid::new_v4(),
+                user_id,
+                course_id,
+                0.0,  // progreso inicial 0%
+                total_lessons_i32,
+                Some(0),  // 0 lecciones completadas inicialmente
+                Utc::now(),
+                Utc::now(),
+                Utc::now()
+            )
+            .execute(&self.pool)
+            .await?;
+        }
+
+        Ok(())
+    }
+
+    async fn check_user_course_access(
+        &self,
+        user_id: Uuid,
+        course_id: Uuid
+    ) -> Result<Option<bool>, Error> {
+        // 1. Verificar si el usuario es admin
+        let is_admin = query_scalar!(
+            "SELECT EXISTS(SELECT 1 FROM users WHERE id = $1 AND role = 'admin')",
+            user_id
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        if is_admin.unwrap_or(false) {
+            return Ok(Some(true));
+        }
+
+        // 2. Verificar si el usuario tiene una suscripción activa
+        let has_active_subscription = query_scalar!(
+            "SELECT EXISTS(SELECT 1 FROM subscription WHERE user_id = $1 AND status = true AND end_time > NOW())",
+            user_id
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        if has_active_subscription.unwrap_or(false) {
+            return Ok(Some(true));
+        }
+
+        // 3. Verificar si el usuario ha comprado este curso específico
+        query_scalar!(
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM user_courses
+                WHERE user_id = $1 AND course_id = $2
+            )
+            "#,
+            user_id,
+            course_id
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| {
+            eprint!("Error: {}", e);
+            e
+        })
+    }
+
+    async fn get_user_purchased_courses(
+        &self,
+        user_id: Uuid
+    ) -> Result<Vec<Uuid>, Error> {
+        query_as::<_, UserCourse>(
+            r#"
+            SELECT id, user_id, course_id, purchase_date, created_at, updated_at
+            FROM user_courses
+            WHERE user_id = $1
+            "#
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| {
+            eprint!("Error: {}", e);
+            e
+        })
+        .map(|user_courses| {
+            user_courses.into_iter().map(|uc| uc.course_id).collect()
+        })
+    }
+
+    async fn get_user_course_progress(
+        &self,
+        user_id: Uuid,
+        course_id: Uuid
+    ) -> Result<Option<CourseProgress>, Error> {
+        query_as::<_, CourseProgress>(
+            r#"
+            SELECT * FROM course_progress
+            WHERE user_id = $1 AND course_id = $2
+            "#
+        )
+        .bind(user_id)
+        .bind(course_id)
+        .fetch_optional(&self.pool)
+        .await.map_err(|e| {
+            eprintln!("ERROR: {}", e);
+            e
+        })
+    }
+
+    async fn update_course_progress(
+        &self,
+        user_id: Uuid,
+        course_id: Uuid,
+        completed_lessons: i32,
+        progress_percentage: f32
+    ) -> Result<(), Error> {
+        let _ = query!(
+            r#"
+            UPDATE course_progress
+            SET completed_lessons = $1,
+                progress_percentage = $2,
+                last_accessed = NOW(),
+                updated_at = NOW()
+            WHERE user_id = $3 AND course_id = $4
+            "#,
+            completed_lessons,
+            progress_percentage,
+            user_id,
+            course_id
+        )
+        .execute(&self.pool)
+        .await.map_err(|e|
+            {
+                eprint!("Error: {}", e);
+                e
+            }
+        );
+
+        Ok(())
+    }
+
 }

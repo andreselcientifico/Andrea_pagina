@@ -1,6 +1,6 @@
 use std::{rc::Rc, sync::Arc, future::Future};
 use actix_web::{
-    Error, HttpMessage, HttpResponse, body::{EitherBody}, dev::{Service, ServiceRequest, ServiceResponse, Transform, forward_ready}, http::header
+    Error, HttpMessage, web::Data, HttpResponse, body::{EitherBody}, dev::{Service, ServiceRequest, ServiceResponse, Transform, forward_ready}, http::header
 };
 use futures::{FutureExt, future::{LocalBoxFuture, Ready, ready}};
 use uuid::Uuid;
@@ -8,7 +8,7 @@ use std::pin::Pin;
 
 
 use crate::{
-    AppState, auth::auth::verify_jwt, db::db::UserExt, errors::error::{ErrorMessage, HttpError}, models::models::{User, UserRole}, utils::token::{TokenClaims, decode_token}
+    AppState, auth::auth::verify_jwt, db::db::{UserExt, course_purchaseExt}, errors::error::{ErrorMessage, HttpError}, models::models::{User, UserRole}, utils::token::{TokenClaims, decode_token}
 };
 
 /// Estructura que contendrá al usuario autenticado
@@ -246,6 +246,8 @@ fn extract_user_role(req: &ServiceRequest) -> UserRole {
 pub enum RequiredAccess {
     Role(UserRole),
     PremiumAccess,
+    OwnedCourse(Uuid),
+    AnyCourseAccess,
 }
 
 #[derive(Clone)]
@@ -302,7 +304,9 @@ where
         let required = self.required.clone();
 
         async move {
-            let claims = extract_token_claims(&req);
+            let app_data = req.app_data::<Data<Arc<AppState>>>().unwrap();
+            let db_client = &app_data.db_client;
+            let claims = extract_token_claims(&req, app_data.clone());
 
             if claims.is_none() {
                 let (req, _) = req.into_parts();
@@ -313,7 +317,6 @@ where
             }
 
             let claims = claims.unwrap();
-
             let mut allowed = false;
 
             // Revisar cada requisito de acceso
@@ -327,6 +330,30 @@ where
                     RequiredAccess::PremiumAccess => {
                         let now_ts = chrono::Utc::now().timestamp();
                         if claims.subscription_expires_at.unwrap_or(0) > now_ts {
+                            allowed = true;
+                        }
+                    }
+                    RequiredAccess::OwnedCourse(course_id) => {
+                        // Verificar si el usuario ha comprado este curso
+                        let has_access = db_client.check_user_course_access(claims.sub,*course_id).await;
+                        if has_access.is_ok() && has_access.is_ok() {
+                            allowed = true;
+                        }
+                    }
+                    RequiredAccess::AnyCourseAccess => {
+                        // Verificar si el usuario tiene una suscripción activa
+                        if let Some(expires_at) = claims.subscription_expires_at {
+                            let now_ts = chrono::Utc::now().timestamp();
+                            if expires_at > now_ts {
+                                allowed = true;
+                                continue;
+                            }
+                        }
+
+                        // Si no tiene suscripción activa, verificar si tiene acceso a algún curso
+                        let purchased_courses = db_client.get_user_purchased_courses(claims.sub)
+                            .await;
+                        if purchased_courses.is_ok() && !purchased_courses.unwrap().is_empty() {
                             allowed = true;
                         }
                     }
@@ -349,8 +376,7 @@ where
 }
 
 /// 🔹 Igual que `extract_user_role` pero devuelve todos los claims
-fn extract_token_claims(req: &ServiceRequest) -> Option<TokenClaims> {
-    let app_data = req.app_data::<actix_web::web::Data<Arc<AppState>>>()?;
+fn extract_token_claims(req: &ServiceRequest, app_data: Data<Arc<AppState>>) -> Option<TokenClaims> {
     let app_state = app_data.as_ref();
 
     let token = req.cookie("token")

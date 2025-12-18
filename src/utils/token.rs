@@ -1,19 +1,20 @@
 use chrono::{Utc, Duration};
 use serde::{Serialize, Deserialize};
 use jsonwebtoken::{encode, decode, EncodingKey, DecodingKey, Header, Validation, Algorithm, errors::Error as JwtError};
+use uuid::Uuid;
 
 use crate::models::models::UserRole;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TokenClaims {
-    pub sub: String,
+    pub sub: Uuid,
     pub role: UserRole,
     pub iat: usize,
     pub exp: usize,
     pub subscription_expires_at: Option<i64>,
 }
-pub fn create_token_rsa(user_id: &str, role:UserRole, subscription_expires_at: Option<i64>, secret: &EncodingKey, expiration_in_seconds: i64) -> Result<String, JwtError> {
-    if user_id.is_empty() {
+pub fn create_token_rsa(user_id: Uuid, role:UserRole, subscription_expires_at: Option<i64>, secret: &EncodingKey, expiration_in_seconds: i64) -> Result<String, JwtError> {
+    if user_id.is_nil() {
         return Err(jsonwebtoken::errors::ErrorKind::InvalidSubject.into());
     }
 
@@ -22,7 +23,7 @@ pub fn create_token_rsa(user_id: &str, role:UserRole, subscription_expires_at: O
     encode(
         &Header::new(Algorithm::RS256),
         &TokenClaims {
-            sub: user_id.to_owned(),
+            sub: user_id,
             role,
             iat: now.timestamp() as usize,
             exp: (now + Duration::seconds(expiration_in_seconds)).timestamp() as usize,

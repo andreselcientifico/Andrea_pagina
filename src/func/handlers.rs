@@ -1,10 +1,9 @@
 use actix_web::{ 
-    HttpMessage, HttpRequest, HttpResponse, cookie::{Cookie, SameSite}, get, http::header, post, put, web::{ Data, Json, Path, Query, ReqData}
+    HttpMessage, HttpRequest, HttpResponse, cookie::{Cookie, SameSite}, get, post, put, web::{ Data, Json, Path, Query, ReqData}
 };
 use std::sync::Arc;
 use validator::Validate;
 use crate::{AppState, CachedToken, config::dtos::{FilterCourseDto, ForgotPasswordRequestDTO, VerifyEmailQueryDTO}, db::db::{CourseExt, UserAchievementExt, UserExt}};
-use serde::{Deserialize};
 use serde_json::{Value, json};
 use chrono::{ Duration, Utc };
 use uuid::Uuid;
@@ -19,7 +18,7 @@ use crate::config::dtos::{ RegisterDTO, LoginDTO, Response , UserLoginResponseDt
 // ===================== //
 //  Obtener token con cache
 // ===================== //
-async fn get_paypal_token(state: &AppState) -> String {
+pub async fn get_paypal_token(state: &AppState) -> String {
     let mut cache = state.token_cache.lock().await;
 
     // Si hay un token válido, devolverlo
@@ -82,7 +81,7 @@ pub async fn register_user(
             if let Err(e) = send_email_result {
                return Err(HttpError::server_error(format!("Ocurrio un error: {}", e)))
             }
-            let token = create_token_rsa(&user.id.to_string(), user.role,None, &app_state.env.encoding_key, app_state.env.jwt_maxage)
+            let token = create_token_rsa(user.id, user.role,None, &app_state.env.encoding_key, app_state.env.jwt_maxage)
             .map_err(|e| HttpError::server_error(e.to_string()))?;
             Ok(HttpResponse::Created().cookie(
                 Cookie::build("token", token.clone())
@@ -125,7 +124,7 @@ pub async fn login_user(app_state: Data<Arc<AppState>>, Json(body): Json<LoginDT
 
     if verify_password(&body.password, &user.password)
         .map_err(|_| HttpError::bad_request(ErrorMessage::WrongCredentials.to_string()))? {
-        let token = create_token_rsa(&user.id.to_string(), user.role,None, &app_state.env.encoding_key, app_state.env.jwt_maxage)
+        let token = create_token_rsa(user.id, user.role,None, &app_state.env.encoding_key, app_state.env.jwt_maxage)
             .map_err(|e| HttpError::server_error(e.to_string()))?;
 
         Ok(
@@ -192,7 +191,7 @@ pub async fn verify_email(Query(query_params): Query<VerifyEmailQueryDTO>, app_s
         return Err(HttpError::server_error(format!("Ocurrio un error: {}", e)))
     }
 
-    let token = create_token_rsa(&user.id.to_string(), user.role, None,&app_state.env.encoding_key, app_state.env.jwt_maxage)
+    let token = create_token_rsa(user.id, user.role, None,&app_state.env.encoding_key, app_state.env.jwt_maxage)
         .map_err(|e| HttpError::server_error(e.to_string()))?;
 
     Ok(
@@ -434,54 +433,39 @@ async fn created_order(state: Data<AppState>, path: Path<(Uuid,)>, user: ReqData
         return HttpResponse::InternalServerError().body("Error creating order");
     }
 
-    let response_json: Value = res
-        .json().await
-        .expect("Error al leer la respuesta de PayPal");
+    let response_json: Value = res.json().await.unwrap();
 
-    // Buscar link de aprobación
-    if let Some(links) = response_json["links"].as_array() {
-        if let Some(approve) = links.iter().find(|l| l["rel"] == "approve") {
-            if let Some(href) = approve["href"].as_str() {
-                return HttpResponse::Found()
-                    .append_header(("Location", href)) // redirección HTTP 302
-                    .finish();
-            }
-        }
-    }
+    let order_id = response_json["id"].as_str().unwrap_or_default().to_string();
 
-    HttpResponse::InternalServerError().body(
-        "No se encontró link de aprobación en la respuesta de PayPal"
-    )
+    // Responder sólo con orderID
+    HttpResponse::Ok().json(json!({ "orderID": order_id }))
 }
 
 // ===================== //
 //   Capturar orden
 // ===================== //
-#[derive(Deserialize)]
-struct CaptureParams {
-    token: String,
-}
 
-#[post("/capture-order")]
-async fn capture_order(params: Query<CaptureParams>) -> HttpResponse {
-    HttpResponse::Ok()
-        .content_type(header::ContentType::html())
-        .body(
-            format!("Orden capturada exitosamente. ¡Gracias por su compra! Token: {}", params.token)
-        )
-}
+#[post("/paypal/capture/{order_id}")]
+async fn capture_order(path: Path<(String,)>, app_state: Data<AppState>) -> HttpResponse {
+    let order_id = path.into_inner().0;
+    let access_token = get_paypal_token(&app_state).await;
 
-// ===================== //
-//   Cancelar orden
-// ===================== //
-#[derive(Deserialize)]
-struct CancelParams {
-    token: String,
-}
+    let res = app_state.client
+        .post(format!("{}/v2/checkout/orders/{}/capture", app_state.env.paypal_api_mode, order_id))
+        .bearer_auth(&access_token)
+        .send().await;
 
-#[post("/cancel-order")]
-async fn cancel_order(params: Query<CancelParams>) -> HttpResponse {
-    HttpResponse::Ok()
-        .content_type(header::ContentType::html())
-        .body(format!("Orden cancelada. ¡Gracias por su visita! Token: {}", params.token))
+     match res {
+        Ok(response) => {
+            // Parsear la respuesta de PayPal
+            let data: serde_json::Value = response.json().await.unwrap();
+            HttpResponse::Ok().json(data)
+        },
+        Err(err) => {
+            // Manejo de errores
+            HttpResponse::InternalServerError().json(json!({
+                "error": format!("Error al capturar la orden: {:?}", err)
+            }))
+        }
+    }
 }

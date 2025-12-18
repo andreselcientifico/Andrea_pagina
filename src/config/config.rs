@@ -15,6 +15,7 @@ pub struct Config {
     pub paypal_secret: String,
     pub host: String,
     pub port: u16,
+    pub paypal_webhook_id: String,
 }
 
 // FIXME: usar init
@@ -30,6 +31,7 @@ impl Config {
         let decoding_key = DecodingKey::from_rsa_pem(&public_key).expect("Error al construir DecodingKey");
         let paypal_client_id = env::var("PAYPAL_API_CLIENT_ID").expect("PAYPAL_API_CLIENT_ID no definido");
         let paypal_secret = env::var("PAYPAL_API_SECRET").expect("PAYPAL_API_SECRET no definido");
+        let paypal_webhook_id = env::var("PAYPAL_WEBHOOK_ID").expect("PAYPAL_WEBHOOK_ID no definido");
         let host = env::var("HOST").unwrap_or("localhost".to_string());
 
         Config {
@@ -44,6 +46,7 @@ impl Config {
             paypal_secret,
             host,
             port: 8000,
+            paypal_webhook_id,
         }
     }
 }

@@ -211,7 +211,7 @@ pub struct CreateCourseDTO {
     pub students: Option<i32>, // se puede calcular por defecto
 
     pub rating: Option<f32>, // calificación inicial, por defecto 5.0
-
+    #[validate(url(message = "La URL de la imagen no es válida"))]
     pub image: Option<String>, // URL de imagen
 
     #[validate(length(min = 1, message = "La categoría es requerida"))]
@@ -278,7 +278,7 @@ pub struct UpdateCourseDTO {
     pub students: Option<i32>, // se puede calcular por defecto
 
     pub rating: Option<f32>, // calificación inicial, por defecto 5.0
-
+    #[validate(url(message = "La URL de la imagen no es válida"))]
     pub image: Option<String>, // URL de imagen
 
     #[validate(length(min = 1, message = "La categoría es requerida"))]
@@ -399,8 +399,22 @@ pub struct CreatePaymentDTO {
     pub amount: f64,
     #[validate(length(min = 1, message = "El método de pago es requerido"))]
     pub payment_method: String,
-    #[serde(default)]
-    pub transaction_id: Option<String>,
+    #[validate(length(min = 1, message = "El ID de transacción es requerido"))]
+    pub transaction_id: String,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Serialize, Deserialize, Validate, Clone)]
+pub struct ProductDTO {
+    #[validate(length(min = 1, message = "El nombre del producto es requerido"))]
+    pub name: String,
+    #[validate(length(min = 1, message = "La descripción del producto es requerida"))]
+    pub description: String,
+    pub type_: String, 
+    pub category: String, 
+    #[validate(url(message = "La URL de la imagen no es válida"))]
+    pub image_url: Option<String>,
+    pub home_url: Option<String>,
 }
 
 #[allow(dead_code)]
