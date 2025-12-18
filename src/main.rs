@@ -140,7 +140,6 @@ async fn main() -> std::io::Result<()> {
                 .service(func::handlers::update_user_profile)
                 .service(func::handlers::created_order)
                 .service(func::handlers::capture_order)
-                .service(func::handlers::cancel_order)
         )
             
     })
