@@ -11,6 +11,7 @@ mod mail;
 
 use actix_web::Responder;
 use actix_web::middleware::Compress;
+use actix_web::web::scope;
 use actix_web::{ web,web::{Data, Json},  App, HttpServer, HttpResponse };
 use chrono::{ DateTime, Utc };
 use openssl::ssl::{ SslAcceptor, SslFiletype, SslMethod };
@@ -105,8 +106,6 @@ async fn main() -> std::io::Result<()> {
     };
      let app_state = Arc::new(state.clone());
     HttpServer::new(move || {
- 
-       
         App::new()
             .wrap(Compress::default())
             .wrap(
@@ -134,7 +133,7 @@ async fn main() -> std::io::Result<()> {
             .service(courses_scope(app_state.clone()))
             .service(payments_scope(app_state.clone()))
             .service(
-            web::scope("/api")
+            scope("/api")
                 .wrap(AuthMiddlewareFactory::new(app_state.clone()))
                 .service(func::handlers::get_user_profile)
                 .service(func::handlers::update_user_profile)

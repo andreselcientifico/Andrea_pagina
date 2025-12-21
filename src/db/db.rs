@@ -1216,181 +1216,7 @@ impl CourseExt for DBClient {
         Ok(result)
     }
 }
-
-#[async_trait]
-pub trait PaymentExt {
-    async fn create_payment(
-        &self,
-        user_id: Uuid,
-        course_id: Uuid,
-        amount: f64,
-        payment_method: String,
-        transaction_id: String,
-    ) -> Result<Payment, Error>;
-
-    async fn get_payment(&self, payment_id: Uuid) -> Result<Option<Payment>, Error>;
-
-    async fn get_user_payments(&self, user_id: Uuid) -> Result<Vec<Payment>, Error>;
-
-    #[allow(dead_code)]
-    async fn get_course_payments(&self, course_id: Uuid) -> Result<Vec<Payment>, Error>;
-
-    async fn update_payment_status(
-        &self,
-        payment_id: Uuid,
-        status: String,
-    ) -> Result<Payment, Error>;
-
-    async fn check_user_course_payment(
-        &self,
-        user_id: Uuid,
-        course_id: Uuid,
-    ) -> Result<Option<Payment>, Error>;
-
-    #[allow(dead_code)]
-    async fn get_payment_count(&self) -> Result<i64, Error>;
-}
-
-#[async_trait]
-impl PaymentExt for DBClient {
-    async fn create_payment(
-        &self,
-        user_id: Uuid,
-        course_id: Uuid,
-        amount: f64,
-        payment_method: String,
-        transaction_id: String,
-    ) -> Result<Payment, Error> {
-        let id = Uuid::new_v4();
-        let now = Utc::now();
-        
-        let payment = sqlx::query_as::<_, Payment>(
-            r#"INSERT INTO payments (id, user_id, course_id, amount, payment_method, transaction_id, status, created_at) 
-               VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7) 
-               RETURNING id, user_id, course_id, amount, payment_method, transaction_id, status, created_at, updated_at"#,
-        )
-        .bind(id)
-        .bind(user_id)
-        .bind(course_id)
-        .bind(amount)
-        .bind(payment_method)
-        .bind(transaction_id)
-        .bind(now)
-        .fetch_one(&self.pool)
-        .await.map_err(|e| {
-            eprintln!("ERROR: {}", e);
-            e
-        })?
-        ;
-        
-        Ok(payment)
-    }
-
-    async fn get_payment(&self, payment_id: Uuid) -> Result<Option<Payment>, Error> {
-        let payment = sqlx::query_as::<_, Payment>(
-            r#"SELECT id, user_id, course_id, amount, payment_method, transaction_id, status, created_at, updated_at 
-               FROM payments WHERE id = $1"#,
-        )
-        .bind(payment_id)
-        .fetch_optional(&self.pool)
-        .await.map_err(|e| {
-            eprintln!("ERROR: {}", e);
-            e
-        })?
-        ;
-        
-        Ok(payment)
-    }
-
-    async fn get_user_payments(&self, user_id: Uuid) -> Result<Vec<Payment>, Error> {
-        let payments = sqlx::query_as::<_, Payment>(
-            r#"SELECT id, user_id, course_id, amount, payment_method, transaction_id, status, created_at, updated_at 
-               FROM payments WHERE user_id = $1 ORDER BY created_at DESC"#,
-        )
-        .bind(user_id)
-        .fetch_all(&self.pool)
-        .await.map_err(|e| {
-            eprintln!("ERROR: {}", e);
-            e
-        })?
-        ;
-        
-        Ok(payments)
-    }
-
-    async fn get_course_payments(&self, course_id: Uuid) -> Result<Vec<Payment>, Error> {
-        let payments = sqlx::query_as::<_, Payment>(
-            r#"SELECT id, user_id, course_id, amount, payment_method, transaction_id, status, created_at, updated_at 
-               FROM payments WHERE course_id = $1 ORDER BY created_at DESC"#,
-        )
-        .bind(course_id)
-        .fetch_all(&self.pool)
-        .await.map_err(|e| {
-            eprintln!("ERROR: {}", e);
-            e
-        })?
-        ;
-        
-        Ok(payments)
-    }
-
-    async fn update_payment_status(
-        &self,
-        payment_id: Uuid,
-        status: String,
-    ) -> Result<Payment, Error> {
-        let payment = sqlx::query_as::<_, Payment>(
-            r#"UPDATE payments SET status = $2, updated_at = $3 WHERE id = $1 
-               RETURNING id, user_id, course_id, amount, payment_method, transaction_id, status, created_at, updated_at"#,
-        )
-        .bind(payment_id)
-        .bind(status)
-        .bind(Utc::now())
-        .fetch_one(&self.pool)
-        .await.map_err(|e| {
-            eprintln!("ERROR: {}", e);
-            e
-        })?
-        ;
-        
-        Ok(payment)
-    }
-
-    async fn check_user_course_payment(
-        &self,
-        user_id: Uuid,
-        course_id: Uuid,
-    ) -> Result<Option<Payment>, Error> {
-        let payment = sqlx::query_as::<_, Payment>(
-            r#"SELECT id, user_id, course_id, amount, payment_method, transaction_id, status, created_at, updated_at 
-               FROM payments WHERE user_id = $1 AND course_id = $2 AND status = 'completed' LIMIT 1"#,
-        )
-        .bind(user_id)
-        .bind(course_id)
-        .fetch_optional(&self.pool)
-        .await.map_err(|e| {
-            eprintln!("ERROR: {}", e);
-            e
-        })?
-        ;
-        
-        Ok(payment)
-    }
-
-    async fn get_payment_count(&self) -> Result<i64, Error> {
-        let result = sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM payments WHERE status = 'completed'"
-        )
-        .fetch_one(&self.pool)
-        .await.map_err(|e| {
-            eprintln!("ERROR: {}", e);
-            e
-        })?
-        ;
-        
-        Ok(result)
-    }
-}
+// ===================== //
 
 #[allow(dead_code)]
 #[async_trait]
@@ -1667,7 +1493,9 @@ pub trait course_purchaseExt {
         user_id: Uuid,
         course_id: Uuid,
         transaction_id: String,
-        amount: f64,
+        amount: i64,
+        payment_method: String,
+        status: String,
     ) -> Result<(), Error>;
 
     async fn check_user_course_access (
@@ -1704,7 +1532,9 @@ impl course_purchaseExt for DBClient {
         user_id: Uuid,
         course_id: Uuid,
         transaction_id: String,
-        amount: f64
+        amount: i64,
+        payment_method: String,
+        status: String,
     ) -> Result<(), Error> {
         // Verificar que el curso existe
         let course_exists = query_scalar!(
@@ -1731,9 +1561,9 @@ impl course_purchaseExt for DBClient {
         .bind(user_id)
         .bind(course_id)
         .bind(amount)
-        .bind("paypal")
+        .bind(payment_method)
         .bind(transaction_id)
-        .bind("completed")
+        .bind(status)
         .bind(Utc::now())
         .bind(Utc::now())
         .fetch_one(&self.pool)
@@ -1762,6 +1592,16 @@ impl course_purchaseExt for DBClient {
                 user_id,
                 course_id,
                 Utc::now(),
+            )
+            .execute(&self.pool)
+            .await?;
+            query!(
+                r#"
+                UPDATE courses
+                SET students = students + 1
+                WHERE id = $1
+                "#,
+                course_id
             )
             .execute(&self.pool)
             .await?;

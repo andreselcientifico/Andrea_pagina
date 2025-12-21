@@ -1,3 +1,4 @@
+use sqlx::types::BigDecimal;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use chrono::{DateTime, Utc, NaiveDate};
@@ -258,7 +259,7 @@ pub struct Payment {
     pub id: Uuid,
     pub user_id: Uuid,
     pub course_id: Uuid,
-    pub amount: f64,
+    pub amount: i64,
     pub payment_method: String,
     pub transaction_id: String,
     pub status: String, // "pending", "completed", "failed"
