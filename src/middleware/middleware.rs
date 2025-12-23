@@ -8,7 +8,7 @@ use std::pin::Pin;
 
 
 use crate::{
-    AppState, auth::auth::verify_jwt, db::db::{UserExt, course_purchaseExt}, errors::error::{ErrorMessage, HttpError}, models::models::{User, UserRole}, utils::token::{TokenClaims, decode_token}
+    AppState, auth::auth::verify_jwt, db::db::{UserExt, CoursePurchaseExt}, errors::error::{ErrorMessage, HttpError}, models::models::{User, UserRole}, utils::token::{TokenClaims, decode_token}
 };
 
 /// Estructura que contendrá al usuario autenticado

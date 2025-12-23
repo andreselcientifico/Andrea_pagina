@@ -1,4 +1,3 @@
-use sqlx::types::BigDecimal;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use chrono::{DateTime, Utc, NaiveDate};
@@ -131,7 +130,7 @@ pub struct UserCourse {
     pub course_id: Uuid,
 
     #[serde(rename = "purchaseDate")]
-    pub purchase_date: DateTime<Utc>,
+    pub purchased_at: DateTime<Utc>,
 
     #[serde(rename = "createdAt")]
     pub created_at: DateTime<Utc>,

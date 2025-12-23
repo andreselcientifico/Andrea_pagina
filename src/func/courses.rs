@@ -1,12 +1,12 @@
 use std::sync::Arc;
-use actix_web::{ web::{ self, Data, Json, Path, Query, scope }, HttpResponse };
+use actix_web::{  HttpResponse, web::{ self, Data, Json, Path, Query, scope } };
 use validator::Validate;
 use uuid::Uuid;
 use serde::Deserialize;
 use sqlx::Error as SqlxError;
 
 use crate::{
-    AppState, config::dtos::{ CreateCourseDTO, ProductDTO, UpdateCourseDTO }, db::db::{CourseExt, course_purchaseExt}, errors::error::{ ErrorMessage, HttpError }, func::payments::create_product, middleware::middleware::{ AccessCheck, AuthMiddlewareFactory, JWTAuthMiddleware, RequiredAccess, RoleCheck }, models::models::UserRole
+    AppState, config::dtos::{ CreateCourseDTO, ProductDTO, UpdateCourseDTO }, db::db::{CourseExt}, errors::error::{ ErrorMessage, HttpError }, func::payments::create_product, middleware::middleware::{ AccessCheck, AuthMiddlewareFactory, JWTAuthMiddleware, RequiredAccess, RoleCheck }, models::models::UserRole
 };
 
 pub fn courses_scope(app_state: Arc<AppState>) -> impl actix_web::dev::HttpServiceFactory {
@@ -26,6 +26,7 @@ pub fn courses_scope(app_state: Arc<AppState>) -> impl actix_web::dev::HttpServi
                     RequiredAccess::Role(UserRole::Admin),
                     RequiredAccess::PremiumAccess,
                     RequiredAccess::OwnedCourse(Uuid::nil()),
+                    RequiredAccess::AnyCourseAccess
                 ]))
                 .route("", web::get().to(get_course_with_modules))
         )
@@ -38,36 +39,14 @@ pub fn courses_scope(app_state: Arc<AppState>) -> impl actix_web::dev::HttpServi
                 .route("/{id}", web::put().to(update_course))
                 .route("/{id}", web::delete().to(delete_course))
         )
-        .service(
-            scope("/my-courses")
-                .wrap(AuthMiddlewareFactory::new(app_state.clone()))
-                .wrap(AccessCheck::new(vec![
-                    RequiredAccess::Role(UserRole::Admin),
-                    RequiredAccess::AnyCourseAccess,
-                ]))
-                .route("", web::get().to(get_user_courses))
-        )
+        
 }
+
 
 #[derive(Deserialize)]
 pub struct ListQuery {
     page: Option<u32>,
     limit: Option<usize>,
-}
-
-pub async fn get_user_courses(
-    app_state: Data<Arc<AppState>>,
-    _auth: web::ReqData<JWTAuthMiddleware>,
-) -> Result<HttpResponse, HttpError> {
-    let claims = &_auth.user;
-    let user_id = Uuid::parse_str(&claims.id.to_string())
-        .map_err(|e| HttpError::bad_request(e.to_string()))?;
-
-    let courses = app_state.db_client.get_user_purchased_courses(user_id)
-        .await
-        .map_err(|e| HttpError::server_error(e.to_string()))?;
-
-    Ok(HttpResponse::Ok().json(courses))
 }
 
 pub async fn get_courses(

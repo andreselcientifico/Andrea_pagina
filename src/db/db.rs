@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use openssl::string;
+
 use sqlx::{Pool, Postgres, query_scalar, query_as, query, Error};
 use uuid::Uuid;
 
@@ -1487,7 +1487,7 @@ impl UserAchievementExt for DBClient {
 
 
 #[async_trait]
-pub trait course_purchaseExt {
+pub trait CoursePurchaseExt {
     async fn register_course_purchase(
         &self,
         user_id: Uuid,
@@ -1508,13 +1508,13 @@ pub trait course_purchaseExt {
         &self,
         user_id: Uuid,
     ) -> Result<Vec<Uuid>, Error>;
-
+    #[allow(dead_code)]
     async fn get_user_course_progress(
         &self,
         user_id: Uuid,
         course_id: Uuid,
     ) -> Result<Option<CourseProgress>, Error>;
-
+    #[allow(dead_code)]
     async fn update_course_progress(
         &self,
         user_id: Uuid,
@@ -1525,7 +1525,7 @@ pub trait course_purchaseExt {
 }
 
 #[async_trait]
-impl course_purchaseExt for DBClient {
+impl CoursePurchaseExt for DBClient {
 
     async fn register_course_purchase(
         &self,
@@ -1710,7 +1710,7 @@ impl course_purchaseExt for DBClient {
     ) -> Result<Vec<Uuid>, Error> {
         query_as::<_, UserCourse>(
             r#"
-            SELECT id, user_id, course_id, purchase_date, created_at, updated_at
+            SELECT id, user_id, course_id, purchased_at, created_at, updated_at
             FROM user_courses
             WHERE user_id = $1
             "#

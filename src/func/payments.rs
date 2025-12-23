@@ -1,19 +1,15 @@
 use std::{sync::Arc};
 use actix_web::{
-    HttpRequest, HttpResponse, web::{self, Data, Json, Path, ReqData, scope}
+    HttpRequest, HttpResponse, web::{self, Data, scope}
 };
-use validator::Validate;
-use uuid::Uuid;
 
 use crate::{
     AppState,
-    config::dtos::{CreatePaymentDTO, VerifyPaymentDTO, ProductDTO},
-    db::db::{CourseExt, course_purchaseExt},
-    errors::error::{ErrorMessage, HttpError},
-    middleware::middleware::{AuthMiddlewareFactory, JWTAuthMiddleware, RoleCheck},
+    config::dtos::{ ProductDTO},
+    errors::error::{HttpError},
+    middleware::middleware::{AuthMiddlewareFactory,  RoleCheck},
     models::models::UserRole,
     func::handlers::get_paypal_token,
-    models::models::Course
 };
 
 pub fn payments_scope(app_state: Arc<AppState>) -> impl actix_web::dev::HttpServiceFactory {
