@@ -1,6 +1,7 @@
 use core::str;
 use chrono::{ DateTime, Utc, NaiveDate };
 use serde::{ Deserialize, Serialize };
+use tracing_subscriber::field::debug;
 use uuid::Uuid;
 use validator::Validate; 
 
@@ -123,6 +124,12 @@ pub struct Response {
 pub struct NameUpdateDTO {
     #[validate(length(min = 1, message = "El nombre de usuario es requerido"))]
     pub name: String,
+}
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateLessonProgressDTO {
+    pub is_completed: bool,
+    pub progress: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
@@ -312,7 +319,7 @@ impl PartialEq<Course> for UpdateCourseDTO {
 pub struct UpdateLessonDTO {
     // Si 'id' está presente, se actualiza; si es None, se crea una nueva lección.
     pub id: Option<Uuid>, 
-    
+    pub module_id: Option<Uuid>,
     // Los campos son Option<T> si se permite la actualización parcial
     pub title: Option<String>, 
     pub duration: Option<String>,
@@ -373,6 +380,9 @@ pub struct CourseWithModulesDto {
     pub features: Option<Vec<String>>,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
+
+    pub total_lessons: i64,
+    pub completed_lessons: i64,
 
     pub modules: Vec<ModuleWithLessonsDto>,
 }

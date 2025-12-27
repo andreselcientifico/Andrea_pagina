@@ -1,12 +1,13 @@
 use std::sync::Arc;
-use actix_web::{  HttpResponse, web::{ self, Data, Json, Path, Query, scope } };
+use actix_web::{  HttpResponse, put, web::{ self, Data, Json, Path, Query, ReqData, scope } };
 use validator::Validate;
 use uuid::Uuid;
 use serde::Deserialize;
 use sqlx::Error as SqlxError;
+use serde_json::json;
 
 use crate::{
-    AppState, config::dtos::{ CreateCourseDTO, ProductDTO, UpdateCourseDTO }, db::db::{CourseExt}, errors::error::{ ErrorMessage, HttpError }, func::payments::create_product, middleware::middleware::{ AccessCheck, AuthMiddlewareFactory, JWTAuthMiddleware, RequiredAccess, RoleCheck }, models::models::UserRole
+    AppState, config::dtos::{ CreateCourseDTO, ProductDTO, UpdateCourseDTO, UpdateLessonProgressDTO }, db::db::{CourseExt, CoursePurchaseExt}, errors::error::{ ErrorMessage, HttpError }, func::payments::create_product, middleware::middleware::{ AccessCheck, AuthMiddlewareFactory, JWTAuthMiddleware, RequiredAccess, RoleCheck }, models::models::UserRole
 };
 
 pub fn courses_scope(app_state: Arc<AppState>) -> impl actix_web::dev::HttpServiceFactory {
@@ -110,7 +111,7 @@ pub async fn get_course_with_modules(
         .map_err(|e| HttpError::bad_request(e.to_string()))?;
 
     let course = app_state.db_client
-        .get_course_with_videos(course_id)
+        .get_course_with_videos(course_id,Some( _auth.user.id))
         .await
         .map_err(|e| HttpError::server_error(e.to_string()))?;
 
@@ -202,3 +203,36 @@ pub async fn delete_course(
 
     Ok(HttpResponse::NoContent().finish())
 }
+
+#[put("/courses/{course_id}/lessons/{lesson_id}/progress")]
+pub async fn update_lesson_progress(
+    path: Path<(String,String)>,
+    user: ReqData<JWTAuthMiddleware>,
+    state: Data<Arc<AppState>>,
+    Json(progress_data): Json<UpdateLessonProgressDTO>,
+) -> Result<HttpResponse, HttpError> {
+    log::debug!("ejecutando update_lesson_progress");
+    let  (_,lesson_id) = path.into_inner();
+    let user_id = user.user.id;
+
+    let lesson_uuid = Uuid::parse_str(&lesson_id)
+        .map_err(|_| HttpError::bad_request("ID de lección inválido".to_string()))?;
+    log::debug!("user_id: {}", user_id);
+    log::debug!("lesson_uuid: {}", lesson_uuid);
+    log::debug!("progress_data: {:?}", progress_data);
+    state.db_client.update_lesson_progress(
+        user_id,
+        lesson_uuid,
+        progress_data.is_completed,
+        progress_data.progress,
+    )
+    .await
+    .map_err(|e| HttpError::server_error(e.to_string()))?;
+    
+    Ok(HttpResponse::Ok().json(json!({
+        "success": true,
+        "lessonId": lesson_uuid,
+        "progress": progress_data.progress,
+    })))
+}
+

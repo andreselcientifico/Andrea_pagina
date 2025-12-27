@@ -146,17 +146,18 @@ pub struct CourseProgress {
     pub user_id: Uuid,
     #[serde(rename = "courseId")]
     pub course_id: Uuid,
-
     #[serde(rename = "progressPercentage")]
     pub progress_percentage: f32,
     #[serde(rename = "totalLessons")]
     pub total_lessons: Option<i32>,
     #[serde(rename = "completedLessons")]
     pub completed_lessons: Option<i32>,
-
     #[serde(rename = "lastAccessed")]
     pub last_accessed: DateTime<Utc>,
-
+    #[serde(rename = "startedAt")]
+    pub started_at: DateTime<Utc>,
+    #[serde(rename = "completedAt")]
+    pub completed_at: Option<DateTime<Utc>>,
     #[serde(rename = "createdAt")]
     pub created_at: DateTime<Utc>,
     #[serde(rename = "updatedAt")]
@@ -264,4 +265,27 @@ pub struct Payment {
     pub status: String, // "pending", "completed", "failed"
     pub created_at: DateTime<Utc>,
     pub updated_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+pub struct UserLessonProgress {
+    pub id: Uuid,
+    #[serde(rename = "userId")]
+    pub user_id: Uuid,
+    #[serde(rename = "lessonId")]
+    pub lesson_id: Uuid,
+    #[serde(rename = "isCompleted")]
+    pub is_completed: bool,
+    #[serde(rename = "startedAt")]
+    pub started_at: DateTime<Utc>,
+    #[serde(rename = "completedAt")]
+    pub completed_at: Option<DateTime<Utc>>,
+    #[serde(rename = "progress")]
+    pub progress: Option<f64>,
+    #[serde(rename = "lastAccessed")]
+    pub last_accessed: DateTime<Utc>,
+    #[serde(rename = "createdAt")]
+    pub created_at: DateTime<Utc>,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: DateTime<Utc>,
 }

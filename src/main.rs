@@ -124,7 +124,6 @@ async fn main() -> std::io::Result<()> {
                 .max_age(3600)
             )
             .app_data(Data::new(app_state.clone()))
-            .route("/ping", web::post().to(ping))
             .service(func::handlers::register_user)
             .service(func::handlers::login_user)
             .service(func::handlers::verify_email)
@@ -142,6 +141,7 @@ async fn main() -> std::io::Result<()> {
                 .service(
                         func::handlers::get_user_courses_api
                 )
+                .service(func::courses::update_lesson_progress)
         )
             
     })

@@ -58,15 +58,12 @@ pub async fn get_user_courses_api(
     app_state: Data<Arc<AppState>>,
     req: HttpRequest,
 ) -> Result<HttpResponse, HttpError> {
-    println!("Entering get_user_courses handler"); // Log de depuración
     let extensions = req.extensions();
     let user_data = extensions
         .get::<JWTAuthMiddleware>()
         .ok_or_else(|| HttpError::unauthorized("Usuario no autenticado".to_string()))?;
 
-    println!("User data: {:?}", user_data); // Log de depuración
     let user_id = user_data.user.id;
-    println!("User ID: {:?}", user_id); // Log de depuración
 
     let courses = app_state.db_client.get_user_purchased_courses(user_id)
         .await
@@ -74,8 +71,6 @@ pub async fn get_user_courses_api(
             eprintln!("Error al obtener cursos comprados: {}", e);
             HttpError::server_error(e.to_string())
         })?;
-
-    println!("User courses: {:?}", courses); // Log de depuración
 
     // Devolver un objeto JSON con la estructura esperada
     Ok(HttpResponse::Ok().json(json!({
