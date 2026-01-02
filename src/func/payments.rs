@@ -336,8 +336,7 @@ pub async fn verify_paypal_webhook_signature(
 // ===================== //
 //   Crear orden
 // ===================== //
-#[post("/{course_id}/create-order")]
-async fn created_order(
+pub async fn created_order(
     state: Data<Arc<AppState>>, 
     path: Path<(Uuid,)>,
 ) -> HttpResponse {

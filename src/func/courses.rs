@@ -48,11 +48,12 @@ pub async fn get_lesson_comments(
 }
 
 pub async fn delete_comment(
-    path: Path<String>,
+    path: Path<(Uuid,Uuid)>,
     app_state: Data<Arc<AppState>>,
     _auth: web::ReqData<JWTAuthMiddleware>  // requiere autenticación
 ) -> Result<HttpResponse, HttpError> {
-    let comment_id = Uuid::parse_str(&path.into_inner())
+    let (_, commentid) = path.into_inner();
+    let comment_id = Uuid::parse_str(&commentid.to_string())
         .map_err(|e| HttpError::bad_request(e.to_string()))?;
 
     app_state.db_client
@@ -88,7 +89,13 @@ pub async fn get_rating(
 
     let rating = app_state.db_client
         .get_rating(course_id, Some(_auth.user.id)).await
-        .map_err(|e| HttpError::server_error(e.to_string()))?;
+        .map_err(|e| 
+            {   
+                log::debug!("get_course_with_videos_preview error: {:?}", e);
+                log::error!("Error al obtener el curso: {}", e);
+                HttpError::server_error(e.to_string())
+            }
+        )?;
 
     Ok(HttpResponse::Ok().json(rating))
 }
@@ -164,6 +171,32 @@ pub async fn get_course_with_modules(
         .get_course_with_videos(course_id,Some( _auth.user.id))
         .await
         .map_err(|e| HttpError::server_error(e.to_string()))?;
+
+    match course {
+        Some(c) => Ok(HttpResponse::Ok().json(c)),
+        None => Err(HttpError::not_found(ErrorMessage::CourseNotFound.to_string())),
+    }
+}
+
+pub async fn get_course_with_modules_preview(
+    path: Path<String>,
+    app_state: Data<Arc<AppState>>,
+    _auth: web::ReqData<JWTAuthMiddleware>
+) -> Result<HttpResponse, HttpError> {
+    let id_str = path.into_inner();
+    let course_id = Uuid::parse_str(&id_str)
+        .map_err(|e| HttpError::bad_request(e.to_string()))?;
+
+    let course = app_state.db_client
+        .get_course_with_videos_preview(course_id,Some( _auth.user.id))
+        .await
+        .map_err(|e| 
+            {
+                log::debug!("get_course_with_videos_preview error: {:?}", e);
+                log::error!("Error al obtener el curso: {}", e);
+                HttpError::server_error(e.to_string())
+            }
+        )?;
 
     match course {
         Some(c) => Ok(HttpResponse::Ok().json(c)),
@@ -254,7 +287,7 @@ pub async fn delete_course(
     Ok(HttpResponse::NoContent().finish())
 }
 
-#[put("/{course_id}/lessons/{lesson_id}/progress")]
+
 pub async fn update_lesson_progress(
     path: Path<(String,String)>,
     user: ReqData<JWTAuthMiddleware>,

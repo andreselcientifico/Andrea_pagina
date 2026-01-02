@@ -496,6 +496,7 @@ pub struct FilterCourseDto {
     pub students: Option<i32>,
     pub image: Option<String>,
     pub category: Option<String>,
+    pub rating: i32,
     pub features: Option<Vec<String>>,
     pub paypal_product_id: Option<String>,
     #[serde(rename = "createdAt")]
@@ -520,6 +521,7 @@ impl FilterCourseDto {
             students: Some(course.students),
             image: course.image.clone(),
             category: Some(course.category.clone()),
+            rating: course.rating.clone(),
             paypal_product_id: course.paypal_product_id.clone(),
             features,
             created_at: Some(course.created_at),
@@ -600,6 +602,7 @@ pub struct UserCourseDto {
     pub students: i32,                                              
     pub image: Option<String>,                
     pub category: String,                     
+    pub rating: i32,
     pub features: Option<serde_json::Value>,
     pub paypal_product_id: Option<String>,
     pub created_at: DateTime<Utc>,

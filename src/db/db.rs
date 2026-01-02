@@ -594,10 +594,16 @@ pub trait CourseExt {
     ) -> Result<Vec<CourseWithModulesDto>, Error> ;
 
     async fn get_course_with_videos(
-    &self,
-    course_id: Uuid,
-    user_id: Option<Uuid>,
-) -> Result<Option<CourseWithModulesDto>, Error>;
+        &self,
+        course_id: Uuid,
+        user_id: Option<Uuid>,
+    ) -> Result<Option<CourseWithModulesDto>, Error>;
+
+    async fn get_course_with_videos_preview(
+        &self,
+        course_id: Uuid,
+        user_id: Option<Uuid>,
+    ) -> Result<Option<CourseWithModulesDto>, sqlx::Error>;
 
     async fn update_course(
         &self,
@@ -836,16 +842,13 @@ impl CourseExt for DBClient {
                 c.price,
                 c.image,
                 c.category,
+                COALESCE(AVG(cr.rating), 0)::int AS rating,
+                COUNT(cr.id) AS rating_count,
                 c.created_at,
                 c.updated_at,
-                c.features,
-                c.rating,
-                c.rating_count,
+                c.features
                 -- user course
 
-                -- rating promedio
-                COALESCE(AVG(cr.rating), 0)::float AS rating,
-                COUNT(cr.id) AS rating_count
             FROM courses c
             INNER JOIN user_courses uc
                 ON uc.course_id = c.id
@@ -894,6 +897,8 @@ impl CourseExt for DBClient {
                 c.created_at,
                 c.updated_at,
                 c.features
+                -- user course
+                
             FROM courses c
             LEFT JOIN course_ratings cr
                 ON cr.course_id = c.id
@@ -1147,6 +1152,178 @@ impl CourseExt for DBClient {
                 }
             }
         }
+        if let Some(course) = &mut course_opt {
+            course.total_lessons = total_lessons;
+            course.completed_lessons = completed_lessons;
+        }
+
+        tx.commit().await?;
+        Ok(course_opt)
+    }
+
+    async fn get_course_with_videos_preview(
+        &self,
+        course_id: Uuid,
+        user_id: Option<Uuid>,
+    ) -> Result<Option<CourseWithModulesDto>, sqlx::Error> {
+        let mut tx = self.pool.begin().await?;
+
+        // Usamos una CTE para calcular lesson_index y luego en la selección final
+        // exponemos content_url y description solo cuando lesson_index = 1.
+        let rows = sqlx::query!(
+            r#"
+            WITH course_data AS (
+                SELECT
+                    c.id AS course_id,
+                    c.title AS course_title,
+                    c.description,
+                    c.long_description,
+                    c.level,
+                    c.price,
+                    c.duration,
+                    c.students,
+                    c.image,
+                    c.category,
+                    c.features,
+                    c.created_at,
+                    c.updated_at,
+
+                    m.id AS module_id,
+                    m.title AS module_title,
+                    m."order" AS module_order,
+
+                    l.id AS lesson_id,
+                    l.title AS lesson_title,
+                    l.duration AS lesson_duration,
+                    l."type" AS lesson_type,
+                    l.content_url AS lesson_content_url,
+                    l.description AS lesson_description,
+                    l."order" AS lesson_order,
+
+                    ulp.is_completed AS lesson_completed,
+
+                    ROW_NUMBER() OVER (ORDER BY m."order" ASC NULLS LAST, l."order" ASC NULLS LAST) AS lesson_index
+                FROM courses c
+                LEFT JOIN modules m ON m.course_id = c.id
+                LEFT JOIN lessons l ON l.module_id = m.id
+                LEFT JOIN user_lesson_progress ulp
+                    ON ulp.lesson_id = l.id
+                    AND ulp.user_id = $2
+                WHERE c.id = $1
+            )
+            SELECT
+                course_id,
+                course_title,
+                description,
+                long_description,
+                level,
+                price,
+                duration,
+                students,
+                image,
+                category,
+                features,
+                created_at,
+                updated_at,
+
+                module_id AS "module_id?: Uuid",
+                module_title AS "module_title?",
+                module_order AS "module_order?",
+
+                lesson_id AS "lesson_id?: Uuid",
+                lesson_title AS "lesson_title?",
+                lesson_duration AS "lesson_duration?",
+                lesson_type AS "lesson_type?",
+                -- Exponer content_url solo para la primera lección del curso
+                CASE WHEN lesson_index = 1 THEN lesson_content_url ELSE NULL END AS "content_url?: String",
+                -- Exponer description solo para la primera lección del curso
+                CASE WHEN lesson_index = 1 THEN lesson_description ELSE NULL END AS "lesson_description?: String",
+                lesson_order AS "lesson_order?",
+
+                lesson_completed AS "lesson_completed?",
+                lesson_index AS "lesson_index?"
+            FROM course_data
+            ORDER BY module_order ASC NULLS LAST, lesson_order ASC NULLS LAST
+            "#,
+            course_id,
+            user_id
+        )
+        .fetch_all(&mut *tx)
+        .await?;
+
+        if rows.is_empty() {
+            tx.commit().await?;
+            return Ok(None);
+        }
+
+        let mut total_lessons: i64 = 0;
+        let mut completed_lessons: i64 = 0;
+        let mut course_opt: Option<CourseWithModulesDto> = None;
+
+        for row in rows {
+            // Crear curso si no existe aún
+            let course = course_opt.get_or_insert_with(|| CourseWithModulesDto {
+                id: row.course_id,
+                title: row.course_title.clone(),
+                description: row.description.clone(),
+                long_description: row.long_description.clone(),
+                price: row.price,
+                level: row.level.clone().unwrap_or_default(),
+                duration: row.duration.clone(),
+                students: row.students.unwrap_or(0),
+                image: row.image.clone(),
+                category: row.category.clone().unwrap_or_default(),
+                features: row.features
+                    .as_ref()
+                    .and_then(|v| serde_json::from_value(v.clone()).ok()),
+                created_at: row.created_at.unwrap_or_else(|| chrono::Utc::now()),
+                updated_at: row.updated_at.unwrap_or_else(|| chrono::Utc::now()),
+                total_lessons: 0,
+                completed_lessons: 0,
+                modules: vec![],
+            });
+
+            // Si hay módulo en esta fila
+            if let Some(module_id) = row.module_id {
+                // Buscar módulo existente
+                let module = course.modules.iter_mut().find(|m| m.id == module_id);
+
+                let module_ref = match module {
+                    Some(m) => m,
+                    None => {
+                        course.modules.push(ModuleWithLessonsDto {
+                            id: module_id,
+                            title: row.module_title.clone().unwrap_or_else(|| "Título".into()),
+                            order: row.module_order.unwrap_or(1),
+                            lessons: vec![],
+                        });
+                        course.modules.last_mut().unwrap()
+                    }
+                };
+
+                // Si hay lección en esta fila
+                if let Some(lesson_id) = row.lesson_id {
+                    total_lessons += 1;
+                    if row.lesson_completed.unwrap_or(false) {
+                        completed_lessons += 1;
+                    }
+
+                    // Nota: content_url y lesson_description ya vienen nulos para todas
+                    // las lecciones excepto la primera (por la CASE en SQL).
+                    module_ref.lessons.push(LessonDto {
+                        id: lesson_id,
+                        title: row.lesson_title.clone().unwrap_or_else(|| "Lección".into()),
+                        duration: row.lesson_duration.clone(),
+                        completed: row.lesson_completed,
+                        r#type: row.lesson_type.clone().unwrap_or_else(|| "video".into()),
+                        content_url: row.content_url.clone(),         // solo Some para la primera lección
+                        description: row.lesson_description.clone(),  // solo Some para la primera lección
+                        order: row.lesson_order.unwrap_or(1),
+                    });
+                }
+            }
+        }
+
         if let Some(course) = &mut course_opt {
             course.total_lessons = total_lessons;
             course.completed_lessons = completed_lessons;

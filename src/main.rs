@@ -25,7 +25,7 @@ use db::db::DBClient;
 use sqlx::postgres::PgPoolOptions;
 use dotenvy;
 use middleware::middleware::AuthMiddlewareFactory;
-use crate::routes::routes::{ auth_scope, global_scope };
+use crate::routes::routes::{ auth_scope, course_scope, global_scope };
 use env_logger::Env;
 use actix_web::middleware::Logger;
 
@@ -117,7 +117,7 @@ async fn main() -> std::io::Result<()> {
                     ::permissive()
                     .allowed_origin_fn(|origin, _req_head| {
                         let origin = origin.to_str().unwrap_or("");
-                        origin.as_bytes().ends_with(b"localhost:8080")
+                        origin.as_bytes().ends_with(b"8080")
                     })
                     .allowed_origin_fn(|origin, _req_head| {
                         let origin = origin.to_str().unwrap_or("");
@@ -129,6 +129,7 @@ async fn main() -> std::io::Result<()> {
                     .max_age(3600)
             )
             .service(auth_scope())
+            .service(course_scope())
             .service(
                 scope("")
                     .wrap(AuthMiddlewareFactory::new(app_state.clone()))
