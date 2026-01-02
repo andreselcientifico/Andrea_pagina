@@ -86,8 +86,7 @@ pub struct Course {
     pub level: String,                        
     pub price: f64,
     pub duration: Option<String>,            
-    pub students: i32,                      
-    pub rating: f32,                         
+    pub students: i32,                                              
     pub image: Option<String>,                
     pub category: String,                     
     pub features: Option<serde_json::Value>,
@@ -267,25 +266,53 @@ pub struct Payment {
     pub updated_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
-pub struct UserLessonProgress {
-    pub id: Uuid,
-    #[serde(rename = "userId")]
-    pub user_id: Uuid,
-    #[serde(rename = "lessonId")]
-    pub lesson_id: Uuid,
-    #[serde(rename = "isCompleted")]
-    pub is_completed: bool,
-    #[serde(rename = "startedAt")]
-    pub started_at: DateTime<Utc>,
-    #[serde(rename = "completedAt")]
-    pub completed_at: Option<DateTime<Utc>>,
-    #[serde(rename = "progress")]
-    pub progress: Option<f64>,
-    #[serde(rename = "lastAccessed")]
-    pub last_accessed: DateTime<Utc>,
-    #[serde(rename = "createdAt")]
-    pub created_at: DateTime<Utc>,
-    #[serde(rename = "updatedAt")]
-    pub updated_at: DateTime<Utc>,
-}
+// #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+// pub struct UserLessonProgress {
+//     pub id: Uuid,
+//     #[serde(rename = "userId")]
+//     pub user_id: Uuid,
+//     #[serde(rename = "lessonId")]
+//     pub lesson_id: Uuid,
+//     #[serde(rename = "isCompleted")]
+//     pub is_completed: bool,
+//     #[serde(rename = "startedAt")]
+//     pub started_at: DateTime<Utc>,
+//     #[serde(rename = "completedAt")]
+//     pub completed_at: Option<DateTime<Utc>>,
+//     #[serde(rename = "progress")]
+//     pub progress: Option<f64>,
+//     #[serde(rename = "lastAccessed")]
+//     pub last_accessed: DateTime<Utc>,
+//     #[serde(rename = "createdAt")]
+//     pub created_at: DateTime<Utc>,
+//     #[serde(rename = "updatedAt")]
+//     pub updated_at: DateTime<Utc>,
+// }
+
+// #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+// pub struct CourseComment {
+//     pub id: Uuid,
+//     pub course_id: Uuid,
+//     pub user_id: Uuid,
+//     pub content: String,
+//     pub created_at: DateTime<Utc>,
+// }
+
+// #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+// pub struct LessonComment {
+//     pub id: Uuid,
+//     pub lesson_id: Uuid,
+//     pub user_id: Uuid,
+//     pub content: String,
+//     pub created_at: DateTime<Utc>,
+// }
+
+// #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+// pub struct CourseRating {
+//     pub id: Uuid,
+//     pub course_id: Uuid,
+//     pub user_id: Uuid,
+//     pub rating: i32,
+//     pub created_at: DateTime<Utc>,
+//     pub updated_at: DateTime<Utc>,
+// }

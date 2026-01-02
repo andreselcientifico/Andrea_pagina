@@ -1,7 +1,6 @@
 use core::str;
 use chrono::{ DateTime, Utc, NaiveDate };
 use serde::{ Deserialize, Serialize };
-use tracing_subscriber::field::debug;
 use uuid::Uuid;
 use validator::Validate; 
 
@@ -217,7 +216,6 @@ pub struct CreateCourseDTO {
 
     pub students: Option<i32>, // se puede calcular por defecto
 
-    pub rating: Option<f32>, // calificación inicial, por defecto 5.0
     #[validate(url(message = "La URL de la imagen no es válida"))]
     pub image: Option<String>, // URL de imagen
 
@@ -284,7 +282,6 @@ pub struct UpdateCourseDTO {
 
     pub students: Option<i32>, // se puede calcular por defecto
 
-    pub rating: Option<f32>, // calificación inicial, por defecto 5.0
     #[validate(url(message = "La URL de la imagen no es válida"))]
     pub image: Option<String>, // URL de imagen
 
@@ -308,7 +305,6 @@ impl PartialEq<Course> for UpdateCourseDTO {
             && self.price == Some(other.price)
             && self.duration == other.duration
             && self.students == Some(other.students)
-            && self.rating == Some(other.rating)
             && self.image == other.image
             && self.category == Some(other.category.clone())
     }
@@ -374,7 +370,6 @@ pub struct CourseWithModulesDto {
     pub level: String,
     pub duration: Option<String>,
     pub students: i32,
-    pub rating: f32,
     pub image: Option<String>,
     pub category: String,
     pub features: Option<Vec<String>>,
@@ -489,9 +484,9 @@ pub struct UpdateUserProfileDto {
 
 // Nuevos DTOs para courses y achievements (tipo "filter" como FilterUserDto)
 #[allow(dead_code)]
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct FilterCourseDto {
-    pub id: Option<String>,
+    pub id: Uuid,
     pub title: Option<String>,
     pub description: Option<String>,
     pub long_description: Option<String>,
@@ -499,10 +494,9 @@ pub struct FilterCourseDto {
     pub level: Option<String>,
     pub duration: Option<String>,
     pub students: Option<i32>,
-    pub rating: Option<f32>,
     pub image: Option<String>,
     pub category: Option<String>,
-    pub features: Option<Vec<String>>, // JSONB -> Vec<String>
+    pub features: Option<Vec<String>>,
     pub paypal_product_id: Option<String>,
     #[serde(rename = "createdAt")]
     pub created_at: Option<DateTime<Utc>>,
@@ -511,12 +505,12 @@ pub struct FilterCourseDto {
 }
 
 impl FilterCourseDto {
-    pub fn filter_course(course: &Course) -> Self {
+    pub fn filter_course(course: &UserCourseDto) -> Self {
         let features: Option<Vec<String>> = course.features.as_ref().and_then(|v| {
             serde_json::from_value(v.clone()).ok()
         });
         FilterCourseDto {
-            id: Some(course.id.to_string()),
+            id: course.id,
             title: Some(course.title.to_owned()),
             description: Some(course.description.to_owned()),
             long_description: course.long_description.clone(),
@@ -524,19 +518,19 @@ impl FilterCourseDto {
             level: Some(course.level.clone()),
             duration: course.duration.clone(),
             students: Some(course.students),
-            rating: Some(course.rating),
             image: course.image.clone(),
             category: Some(course.category.clone()),
             paypal_product_id: course.paypal_product_id.clone(),
-            features, // ya convertido a Option<Vec<String>>
+            features,
             created_at: Some(course.created_at),
             updated_at: Some(course.updated_at),
         }
     }
-
-    pub fn filter_courses(courses: &[Course]) -> Vec<FilterCourseDto> {
-        courses.iter().map(|c| FilterCourseDto::filter_course(c)).collect()
+    
+    pub fn filter_courses(list: &[UserCourseDto]) -> Vec<FilterCourseDto> {
+        list.iter().map(|c| FilterCourseDto::filter_course(c)).collect()
     }
+
 }
 
 #[allow(dead_code)]
@@ -564,4 +558,50 @@ impl FilterAchievementDto {
     pub fn filter_achievements(list: &[Achievement]) -> Vec<FilterAchievementDto> {
         list.iter().map(|a| FilterAchievementDto::filter_achievement(a)).collect()
     }
+}
+
+#[derive(Debug, Serialize, Deserialize, Validate, sqlx::FromRow)]
+pub struct CreatedCommentDto {
+    #[validate(length(min = 1, message = "El comentario no puede estar vacío"))]
+    pub content: String
+}
+
+#[derive(Debug, Serialize, Deserialize, Validate, sqlx::FromRow)]
+pub struct CreatedRatingDto {
+    pub rating: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Validate, sqlx::FromRow)]
+pub struct CommentLessonDto {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub lesson_id: Uuid,
+    pub user_name: String,
+    pub content: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct CourseRatingDto {
+    pub average: f64,
+    pub count: i64,
+    pub user_rating: Option<i32>,
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct UserCourseDto {
+    pub id: Uuid,
+    pub title: String,                       
+    pub description: String,                  
+    pub long_description: Option<String>,    
+    pub level: String,                        
+    pub price: f64,
+    pub duration: Option<String>,            
+    pub students: i32,                                              
+    pub image: Option<String>,                
+    pub category: String,                     
+    pub features: Option<serde_json::Value>,
+    pub paypal_product_id: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }

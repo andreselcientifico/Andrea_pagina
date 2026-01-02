@@ -1,10 +1,10 @@
 use actix_web::{ 
-    HttpMessage, HttpRequest, HttpResponse, cookie::{Cookie, SameSite}, get, post, put, web::{ Data, Json, Path, Query, ReqData}
+    HttpMessage, HttpRequest, HttpResponse, cookie::{Cookie, SameSite}, get, post, put, web::{ Data, Json, Query}
 };
 use std::sync::Arc;
 use validator::Validate;
-use crate::{AppState, CachedToken, config::dtos::{FilterCourseDto, ForgotPasswordRequestDTO, VerifyEmailQueryDTO}, db::db::{CourseExt, UserAchievementExt, UserExt, CoursePurchaseExt}};
-use serde_json::{Value, json};
+use crate::{AppState, config::dtos::{FilterCourseDto, ForgotPasswordRequestDTO, VerifyEmailQueryDTO}, db::db::{CourseExt, UserAchievementExt, UserExt, CoursePurchaseExt}};
+use serde_json::{json};
 use chrono::{ Duration, Utc };
 use uuid::Uuid;
 use crate::mail::mails::{ send_verification_email, send_welcome_email, send_forgot_password_email };
@@ -14,44 +14,6 @@ use crate::errors::error::{ ErrorMessage, HttpError };
 use crate::middleware::middleware::JWTAuthMiddleware;  
 use crate::config::dtos::{ RegisterDTO, LoginDTO, Response , UserLoginResponseDto, ResetPasswordRequestDTO, FilterUserDto, UserProfileResponse, UserProfileData, FilterAchievementDto, UpdateUserProfileDto };
 
-
-// ===================== //
-//  Obtener token con cache
-// ===================== //
-pub async fn get_paypal_token(state: &AppState) -> String {
-    let mut cache = state.token_cache.lock().await;
-
-    // Si hay un token válido, devolverlo
-    if let Some(cached) = cache.as_ref() {
-        if cached.is_valid() {
-            return cached.access_token.clone();
-        }
-    }
-
-    // Caso contrario, pedir uno nuevo
-    let resp = state.client
-        .post(format!("{}/v1/oauth2/token", state.env.paypal_api_mode))
-        .basic_auth(&state.env.paypal_client_id, Some(&state.env.paypal_secret))
-        .form(&[("grant_type", "client_credentials")])
-        .send().await
-        .expect("Error solicitando token");
-
-    let json: serde_json::Value = resp.json().await.expect("Error parseando JSON de token");
-    let access_token = json["access_token"]
-        .as_str()
-        .expect("No se encontró access_token")
-        .to_string();
-    let expires_in = json["expires_in"].as_i64().unwrap_or(3600); // segundos
-
-    // Guardar en cache
-    let new_token = CachedToken {
-        access_token: access_token.clone(),
-        expires_at: Utc::now() + Duration::seconds(expires_in - 60), // margen 1min
-    };
-    *cache = Some(new_token);
-
-    access_token
-}
 
 #[get("/mycourses")]
 pub async fn get_user_courses_api(
@@ -68,7 +30,7 @@ pub async fn get_user_courses_api(
     let courses = app_state.db_client.get_user_purchased_courses(user_id)
         .await
         .map_err(|e| {
-            eprintln!("Error al obtener cursos comprados: {}", e);
+            log::error!("Error al obtener cursos comprados: {}", e);
             HttpError::server_error(e.to_string())
         })?;
 
@@ -191,7 +153,7 @@ pub async fn logout_user() -> HttpResponse {
 }
 
 
-#[get("/api/auth/verify")]
+#[get("/verify")]
 pub async fn verify_email(Query(query_params): Query<VerifyEmailQueryDTO>, app_state: Data<Arc<AppState>>) -> Result<HttpResponse, HttpError> {
     query_params.validate()
         .map_err(|e| HttpError::bad_request(e.to_string()))?;
@@ -382,188 +344,4 @@ pub async fn update_user_profile(
         }
         None => Err(HttpError::unauthorized("Usuario no autenticado".to_string())),
     }
-}
-
-// ===================== //
-//   Crear orden
-// ===================== //
-#[post("/courses/{course_id}/create-order")]
-async fn created_order(
-    state: Data<Arc<AppState>>, 
-    path: Path<(Uuid,)>,
-) -> HttpResponse {
-    let course_id = path.into_inner().0;
-    let course = match state.db_client.get_course(course_id).await {
-        Ok(c) => c,
-        Err(_) => {
-            return HttpResponse::NotFound().body("Curso no encontrado");
-        }
-    };
-    let invoice_id = Uuid::new_v4().to_string();
-    let (paypal_product_id , title, price) = match course {
-        Some(c) => (c.paypal_product_id.clone(), c.title.clone(), c.price),
-        None => {
-            return HttpResponse::NotFound().body("Curso no encontrado");
-        }
-    };
-
-    let body =
-        json!({
-        "intent": "CAPTURE",
-        "payment_source": {
-            "paypal": {
-                "experience_context": {
-                    "payment_method_preference": "IMMEDIATE_PAYMENT_REQUIRED",
-                    "landing_page": "LOGIN",
-                    "user_action": "PAY_NOW",
-                    "return_url": format!("{}/paypal/capture?course_id={}", state.env.host, course_id),
-                    "cancel_url": format!("{}/paypal/cancel?course_id={}", state.env.host, course_id)
-                }
-            }
-        },
-        "purchase_units": [{
-            "invoice_id": invoice_id,
-            "custom_id": course_id.to_string(),
-            "amount": {
-                "currency_code": "USD",
-                "value": format!("{:.2}", price),
-                "breakdown": {
-                    "item_total": {
-                        "currency_code": "USD",
-                        "value": format!("{:.2}", price)
-                    }
-                }
-            },
-            "items": [{
-                "name": title,
-                "description": "Curso completo",
-                "unit_amount": {
-                    "currency_code": "USD",
-                    "value": format!("{:.2}", price)
-                },
-                "quantity": "1",
-                "category": "DIGITAL_GOODS",
-                "sku": paypal_product_id
-            }]
-        }]
-    });
-
-    let access_token = get_paypal_token(&state).await;
-
-    let res = state.client
-        .post(format!("{}/v2/checkout/orders", state.env.paypal_api_mode))
-        .bearer_auth(&access_token)
-        .json(&body)
-        .send().await
-        .expect("Error al enviar la solicitud a PayPal");
-
-    if res.status().is_client_error() || res.status().is_server_error() {
-        return HttpResponse::InternalServerError().body("Error creating order");
-    }
-
-    let response_json: Value = res.json().await.unwrap();
-
-    let order_id = response_json["id"].as_str().unwrap_or_default().to_string();
-
-    // Responder sólo con orderID
-    HttpResponse::Ok().json(json!({ "orderID": order_id }))
-}
-
-// ===================== //
-//   Capturar orden
-// ===================== //
-
-#[post("/paypal/capture/{order_id}")]
-async fn capture_order(
-    path: Path<(String,)>, 
-    app_state: Data<Arc<AppState>>,
-    user: ReqData<JWTAuthMiddleware>,
-) -> HttpResponse {
-    let order_id = path.into_inner().0;
-    let user_id = user.user.id;
-    let access_token = get_paypal_token(&app_state).await;
-
-    let res =match  app_state.client
-        .post(format!("{}/v2/checkout/orders/{}/capture", app_state.env.paypal_api_mode, order_id))
-        .bearer_auth(&access_token)
-        .header("Content-Type", "application/json")
-        .body("{}")
-        .send()
-        .await
-    {
-        Ok(res) => res,
-        Err(err) => {
-            return HttpResponse::InternalServerError().json(json!({
-                "error": format!("Error al capturar la orden: {:?}", err)
-            }));
-        }
-    };
-
-    if !res.status().is_success() {
-        let error_body = match res.text().await {
-            Ok(text) => text,
-            Err(_) => "Error desconocido de PayPal".to_string(),
-        };
-        return HttpResponse::BadRequest().json(json!({
-            "error": format!("PayPal devolvió un error: {}", error_body)
-        }));
-    }
-
-    let data: serde_json::Value = match res.json().await {
-        Ok(json) => json,
-        Err(e) => {
-            return HttpResponse::InternalServerError().json(json!({
-                "error": format!("Error al parsear la respuesta de PayPal: {}", e)
-            }));
-        }
-    };
-    // Extraer el status de la respuesta de PayPal
-    let status = data["status"].as_str().unwrap_or("").to_string();
-    // Extraer el course_id del custom_id en purchase_units
-   let custom_id = data["purchase_units"][0]["payments"]["captures"][0]["custom_id"]
-    .as_str()
-    .unwrap_or("");
-    let course_id = match Uuid::parse_str(custom_id) {
-        Ok(id) => id,
-        Err(e) => {
-            return HttpResponse::BadRequest().json(json!({
-                "error": format!("No se pudo obtener el ID del curso de la orden de PayPal: {}", e)
-            }));
-        }
-    };
-    let amount = match data["purchase_units"][0]["amount"]["value"].as_str() {
-        Some(value) => match value.parse::<i64>() {
-            Ok(amount) => amount,
-            Err(_) => 0,
-        },
-        None => 0,
-    };
-
-     if status == "COMPLETED" {
-        match app_state.db_client.register_course_purchase(
-            user_id,
-            course_id,
-            order_id.clone(),
-            amount,
-            "paypal".to_string(),
-            status.clone(),
-        ).await {
-            Ok(_) => (),
-            Err(e) => {
-                return HttpResponse::InternalServerError().json(json!({
-                    "error": format!("Error al registrar la compra: {}", e)
-                }));
-            }
-        };
-    } else {
-        return HttpResponse::BadRequest().json(json!({
-            "error": "El pago no se completó exitosamente"
-        }));
-    }
-    // Devolver un objeto con el status y otros datos relevantes
-    HttpResponse::Ok().json(json!({
-        "status": status,
-        "order_id": order_id,
-        "data": data  // Opcional: devolver toda la respuesta de PayPal si es necesario
-    }))
 }

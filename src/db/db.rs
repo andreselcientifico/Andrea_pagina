@@ -6,7 +6,7 @@ use chrono::{DateTime, Utc};
 use sqlx::{Pool, Postgres, query_scalar, query_as, query, Error};
 use uuid::Uuid;
 
-use crate::{config::dtos::{CourseWithModulesDto, CreateCourseDTO, CreateLessonDTO, CreateModuleDTO, LessonDto, ModuleWithLessonsDto, UpdateCourseDTO},  models::models::{Achievement, Course, CourseProgress, Lesson, Module, Payment, User, UserAchievement, UserCourse, UserRole}};
+use crate::{config::dtos::{CommentLessonDto, CourseRatingDto, CourseWithModulesDto, CreateCourseDTO, CreateLessonDTO, CreateModuleDTO, LessonDto, ModuleWithLessonsDto, UpdateCourseDTO, UserCourseDto},  models::models::{Achievement, Course, CourseProgress, Lesson, Module, Payment, User, UserAchievement, UserCourse, UserRole}};
 
 #[derive(Debug, Clone)]
 pub struct DBClient {
@@ -94,138 +94,138 @@ pub trait UserExt {
 #[async_trait]
 impl UserExt for DBClient {
     async fn get_user(
-    &self,
-    user_id: Option<Uuid>,
-    name: Option<&str>,
-    email: Option<&str>,
-    token: Option<&str>,
-) -> Result<Option<User>, Error> {
-    let mut tx = self.pool.begin().await?;
-    let mut user: Option<User> = None;
-    if let Some(user_id) = user_id {
-        user = query_as!(
-            User,
-            r#"
-            SELECT 
-                id, 
-                name, 
-                email, 
-                phone,
-                location,
-                bio,
-                birth_date,
-                password, 
-                verified, 
-                created_at, 
-                updated_at, 
-                verification_token, 
-                token_expiry, 
-                role as "role: UserRole",
-                profile_image_url,
-                subscription_expires_at
-            FROM users
-            WHERE id = $1
-            "#,
-            user_id
-        ).fetch_optional(&mut *tx).await.map_err(|e| {
-            eprintln!("ERROR: {}", e);
-            e
-        })?
-        ;
-    } else if let Some(name) = name {
-        user = query_as!(
-            User,
-            r#"
-            SELECT 
-                id, 
-                name, 
-                email, 
-                phone,
-                location,
-                bio,
-                birth_date,
-                password, 
-                verified, 
-                created_at, 
-                updated_at, 
-                verification_token, 
-                token_expiry, 
-                role as "role: UserRole",
-                profile_image_url,
-                subscription_expires_at
-            FROM users
-            WHERE name = $1
-            "#,
-            name
-        ).fetch_optional(&mut *tx).await.map_err(|e| {
-            eprintln!("ERROR: {}", e);
-            e
-        })?
-        ;
-    } else if let Some(email) = email {
-        user = query_as!(
-            User,
-            r#"
-            SELECT 
-                id, 
-                name, 
-                email, 
-                phone,
-                location,
-                bio,
-                birth_date,
-                password, 
-                verified, 
-                created_at, 
-                updated_at, 
-                verification_token, 
-                token_expiry, 
-                role as "role: UserRole",
-                profile_image_url,
-                subscription_expires_at
-            FROM users
-            WHERE email = $1
-            "#,
-            email
-        ).fetch_optional(&mut *tx).await.map_err(|e| {
-            eprintln!("ERROR: {}", e);
-            e
-        })?
-        ;
-    } else if let Some(token) = token {
-        user = query_as!(
-            User,
-            r#"
-            SELECT 
-                id, 
-                name, 
-                email, 
-                phone,
-                location,
-                bio,
-                birth_date,
-                password, 
-                verified, 
-                created_at, 
-                updated_at, 
-                verification_token, 
-                token_expiry, 
-                role as "role: UserRole",
-                profile_image_url,
-                subscription_expires_at
-            FROM users
-            WHERE verification_token = $1
-            "#,
-            token
-        ).fetch_optional(&mut *tx).await.map_err(|e| {
-            eprintln!("ERROR: {}", e);
-            e
-        })?
-        ;
+        &self,
+        user_id: Option<Uuid>,
+        name: Option<&str>,
+        email: Option<&str>,
+        token: Option<&str>,
+    ) -> Result<Option<User>, Error> {
+        let mut tx = self.pool.begin().await?;
+        let mut user: Option<User> = None;
+        if let Some(user_id) = user_id {
+            user = query_as!(
+                User,
+                r#"
+                SELECT 
+                    id, 
+                    name, 
+                    email, 
+                    phone,
+                    location,
+                    bio,
+                    birth_date,
+                    password, 
+                    verified, 
+                    created_at, 
+                    updated_at, 
+                    verification_token, 
+                    token_expiry, 
+                    role as "role: UserRole",
+                    profile_image_url,
+                    subscription_expires_at
+                FROM users
+                WHERE id = $1
+                "#,
+                user_id
+            ).fetch_optional(&mut *tx).await.map_err(|e| {
+                log::error!("ERROR: {}", e);
+                e
+            })?
+            ;
+        } else if let Some(name) = name {
+            user = query_as!(
+                User,
+                r#"
+                SELECT 
+                    id, 
+                    name, 
+                    email, 
+                    phone,
+                    location,
+                    bio,
+                    birth_date,
+                    password, 
+                    verified, 
+                    created_at, 
+                    updated_at, 
+                    verification_token, 
+                    token_expiry, 
+                    role as "role: UserRole",
+                    profile_image_url,
+                    subscription_expires_at
+                FROM users
+                WHERE name = $1
+                "#,
+                name
+            ).fetch_optional(&mut *tx).await.map_err(|e| {
+                log::error!("ERROR: {}", e);
+                e
+            })?
+            ;
+        } else if let Some(email) = email {
+            user = query_as!(
+                User,
+                r#"
+                SELECT 
+                    id, 
+                    name, 
+                    email, 
+                    phone,
+                    location,
+                    bio,
+                    birth_date,
+                    password, 
+                    verified, 
+                    created_at, 
+                    updated_at, 
+                    verification_token, 
+                    token_expiry, 
+                    role as "role: UserRole",
+                    profile_image_url,
+                    subscription_expires_at
+                FROM users
+                WHERE email = $1
+                "#,
+                email
+            ).fetch_optional(&mut *tx).await.map_err(|e| {
+                log::error!("ERROR: {}", e);
+                e
+            })?
+            ;
+        } else if let Some(token) = token {
+            user = query_as!(
+                User,
+                r#"
+                SELECT 
+                    id, 
+                    name, 
+                    email, 
+                    phone,
+                    location,
+                    bio,
+                    birth_date,
+                    password, 
+                    verified, 
+                    created_at, 
+                    updated_at, 
+                    verification_token, 
+                    token_expiry, 
+                    role as "role: UserRole",
+                    profile_image_url,
+                    subscription_expires_at
+                FROM users
+                WHERE verification_token = $1
+                "#,
+                token
+            ).fetch_optional(&mut *tx).await.map_err(|e| {
+                log::error!("ERROR: {}", e);
+                e
+            })?
+            ;
+        }
+        tx.commit().await?;
+        Ok(user)
     }
-    tx.commit().await?;
-    Ok(user)
-}
 
     async fn get_users(
         &self,
@@ -260,7 +260,7 @@ impl UserExt for DBClient {
             offset as i64,
         ).fetch_all(&mut *tx)
         .await.map_err(|e| {
-            eprintln!("ERROR: {}", e);
+            log::error!("ERROR: {}", e);
             e
         })?
         ;
@@ -311,7 +311,7 @@ impl UserExt for DBClient {
         )
         .fetch_one(&mut *tx)
         .await.map_err(|e| {
-            eprintln!("ERROR: {}", e);
+            log::error!("ERROR: {}", e);
             e
         })?
         ;
@@ -326,7 +326,7 @@ impl UserExt for DBClient {
         )
        .fetch_one(&mut *tx)
        .await.map_err(|e| {
-            eprintln!("ERROR: {}", e);
+            log::error!("ERROR: {}", e);
             e
         })?
         ;
@@ -368,7 +368,7 @@ impl UserExt for DBClient {
             user_id
         ).fetch_one(&mut *tx)
         .await.map_err(|e| {
-            eprintln!("ERROR: {}", e);
+            log::error!("ERROR: {}", e);
             e
         })?
         ;
@@ -410,7 +410,7 @@ impl UserExt for DBClient {
             user_id
         ).fetch_one(&mut *tx)
        .await.map_err(|e| {
-            eprintln!("ERROR: {}", e);
+            log::error!("ERROR: {}", e);
             e
         })?
         ;
@@ -470,7 +470,7 @@ impl UserExt for DBClient {
         )
         .fetch_one(&mut *tx)
         .await.map_err(|e| {
-            eprintln!("ERROR: {}", e);
+            log::error!("ERROR: {}", e);
             e
         })?
         ;
@@ -512,7 +512,7 @@ impl UserExt for DBClient {
             user_id
         ).fetch_one(&mut *tx)
         .await.map_err(|e| {
-            eprintln!("ERROR: {}", e);
+            log::error!("ERROR: {}", e);
             e
         })?
         ;
@@ -559,7 +559,7 @@ impl UserExt for DBClient {
             user_id,
         ).execute(&mut *tx)
        .await.map_err(|e| {
-            eprintln!("ERROR: {}", e);
+            log::error!("ERROR: {}", e);
             e
         })?
         ;
@@ -581,13 +581,13 @@ pub trait CourseExt {
 
     async fn get_course(&self, course_id: Uuid) -> Result<Option<Course>, Error>;
 
-    async fn get_user_courses(&self, user_id: Uuid) -> Result<Vec<Course>, Error>;
+    async fn get_user_courses(&self, user_id: Uuid) -> Result<Vec<UserCourseDto>, Error>;
 
     async fn get_courses(
         &self,
         page: u32,
         limit: usize,
-    ) -> Result<Vec<Course>, Error>;
+    ) -> Result<Vec<UserCourseDto>, Error>;
 
     async fn get_all_courses_with_modules(
         &self,
@@ -609,6 +609,37 @@ pub trait CourseExt {
 
     #[allow(dead_code)]
     async fn get_course_count(&self) -> Result<i64, Error>;
+
+    async fn create_lesson_comment(
+        &self,
+        lesson_id: Uuid,
+        user_id: Uuid,
+        comment: String,
+    ) -> Result<CommentLessonDto, Error>;
+
+    async fn get_lesson_comments(
+        &self, 
+        lesson_id: Uuid
+    ) -> Result<Vec<CommentLessonDto>, Error>;
+
+    async fn delete_lesson_comment(
+        &self, 
+        comment_id: Uuid
+    ) -> Result<(), Error>;
+
+    async fn create_or_update_rating(
+        &self,
+        course_id: Uuid,
+        user_id: Uuid,
+        rating: i32,
+    ) -> Result<(), Error>;
+
+    async fn get_rating(
+        &self, 
+        course_id: Uuid,
+        user_id: Option<Uuid>,
+    ) -> Result<CourseRatingDto, Error>;
+    
 }
 
 // ===================== //
@@ -641,9 +672,9 @@ impl CourseExt for DBClient {
         let course_insert_result = sqlx::query_as::<_, Course>(
             r#"
             INSERT INTO courses
-                (id, title, description, long_description, level, price, duration, students, rating, image, category, features, paypal_product_id, created_at, updated_at)
+                (id, title, description, long_description, level, price, duration, students, image, category, features, paypal_product_id, created_at, updated_at)
             VALUES
-                ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+                ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
             RETURNING *
             "#
         )
@@ -655,7 +686,6 @@ impl CourseExt for DBClient {
         .bind(dto.price) // Asegúrate que dto.price sea compatible con DECIMAL
         .bind(&dto.duration)
         .bind(dto.students.unwrap_or(0))
-        .bind(dto.rating.unwrap_or(5.0))
         .bind(&dto.image)
         .bind(&dto.category)
         .bind(features_json)
@@ -692,7 +722,7 @@ impl CourseExt for DBClient {
             .bind(module_order)
             .fetch_one(&mut *tx)
             .await;
-            log::info!("Creating lessons for module: {:?}", module_insert);
+
             let module_model = match module_insert {
                 Ok(m) => m,
                 Err(e) => {
@@ -702,7 +732,7 @@ impl CourseExt for DBClient {
             };
 
             let mut lessons_dtos: Vec<CreateLessonDTO> = Vec::new();
-            log::info!("Creating lessons for module: {}", module_model.id);
+
             for (lesson_idx, lesson) in module_dto.lessons.into_iter().enumerate() {
                 // Forzamos el orden también aquí
                 let lesson_order = (lesson_idx + 1) as i32;
@@ -763,7 +793,6 @@ impl CourseExt for DBClient {
             price: course.price,
             duration: course.duration,
             students: Some(course.students),
-            rating: Some(course.rating),
             image: course.image,
             category: course.category,
             features: course.features.and_then(|f| serde_json::from_value(f).ok()),
@@ -780,7 +809,7 @@ impl CourseExt for DBClient {
         .bind(course_id)
         .fetch_optional(&mut *tx)
         .await.map_err(|e| {
-            eprintln!("ERROR: {}", e);
+            log::error!("ERROR: {}", e);
             e
         })?
         ;
@@ -788,44 +817,96 @@ impl CourseExt for DBClient {
         Ok(course)
     }
 
-    async fn get_user_courses(&self, user_id: Uuid) -> Result<Vec<Course>, Error> {
-        let mut tx = self.pool.begin().await?;
-        let courses = sqlx::query_as::<_, Course>(
+    async fn get_user_courses(
+        &self,
+        user_id: Uuid
+    ) -> Result<Vec<UserCourseDto>, Error> {
+
+        let courses = sqlx::query_as::<_, UserCourseDto>(
             r#"
-            SELECT c.*
+            SELECT
+                c.id,
+                c.title,
+                c.description,
+                c.long_description,
+                c.level,
+                c.duration,
+                c.students,
+                c.paypal_product_id,
+                c.price,
+                c.image,
+                c.category,
+                c.created_at,
+                c.updated_at,
+                c.features,
+                c.rating,
+                c.rating_count,
+                -- user course
+
+                -- rating promedio
+                COALESCE(AVG(cr.rating), 0)::float AS rating,
+                COUNT(cr.id) AS rating_count
             FROM courses c
-            INNER JOIN user_courses uc ON uc.course_id = c.id
+            INNER JOIN user_courses uc
+                ON uc.course_id = c.id
+            LEFT JOIN course_ratings cr
+                ON cr.course_id = c.id
             WHERE uc.user_id = $1
+            GROUP BY c.id
             ORDER BY c.created_at DESC
             "#
         )
         .bind(user_id)
-        .fetch_all(&mut *tx)
-        .await.map_err(|e| {
-            eprintln!("ERROR: {}", e);
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| {
+            log::error!("ERROR get_user_courses: {}", e);
             e
-        })?
-        ;
-        tx.commit().await?;
+        })?;
+
         Ok(courses)
     }
+
 
     async fn get_courses(
         &self,
         page: u32,
         limit: usize,
-    ) -> Result<Vec<Course>, Error> {
+    ) -> Result<Vec<UserCourseDto>, Error> {
         let mut tx = self.pool.begin().await?;
         let offset = ((page - 1) * limit as u32) as i64;
-        let courses = sqlx::query_as::<_, Course>(
-            r#"SELECT * FROM courses 
-               ORDER BY created_at DESC LIMIT $1 OFFSET $2"#,
+        let courses = sqlx::query_as::<_, UserCourseDto>(
+            r#"
+            SELECT
+                c.id,
+                c.title,
+                c.description,
+                c.long_description,
+                c.level,
+                c.duration,
+                c.students,
+                c.paypal_product_id,
+                c.price,
+                c.image,
+                c.category,
+                COALESCE(AVG(cr.rating), 0)::int AS rating,
+                COUNT(cr.id) AS rating_count,
+                c.created_at,
+                c.updated_at,
+                c.features
+            FROM courses c
+            LEFT JOIN course_ratings cr
+                ON cr.course_id = c.id
+            GROUP BY c.id
+            ORDER BY c.created_at DESC
+            LIMIT $1 OFFSET $2
+            "#
         )
         .bind(limit as i64)
         .bind(offset)
         .fetch_all(&mut *tx)
         .await.map_err(|e| {
-            eprintln!("ERROR: {}", e);
+            log::error!("ERROR: {}", e);
             e
         })?;
         tx.commit().await?;
@@ -849,7 +930,6 @@ impl CourseExt for DBClient {
                 c.price,
                 c.duration,
                 c.students,
-                c.rating,
                 c.image,
                 c.category,
                 c.features,
@@ -877,7 +957,7 @@ impl CourseExt for DBClient {
         )
         .fetch_all(&mut *tx)
         .await.map_err(|e| {
-            eprintln!("ERROR: {}", e);
+            log::error!("ERROR: {}", e);
             e
         })?;
         // 2️⃣ Procesar filas en estructuras separadas
@@ -898,7 +978,6 @@ impl CourseExt for DBClient {
                     level: row.level.unwrap(),
                     duration: row.duration,
                     students: row.students.unwrap_or(0),
-                    rating: row.rating,
                     image: row.image.clone(),
                     category: row.category.unwrap(),
                     features: row.features
@@ -967,7 +1046,6 @@ impl CourseExt for DBClient {
                 c.price,
                 c.duration,
                 c.students,
-                c.rating,
                 c.image,
                 c.category,
                 c.features,
@@ -1021,7 +1099,6 @@ impl CourseExt for DBClient {
                 level: row.level.clone().unwrap_or_default(),
                 duration: row.duration,
                 students: row.students.unwrap_or(0),
-                rating: row.rating,
                 image: row.image.clone(),
                 category: row.category.clone().unwrap_or_default(),
                 features: row.features
@@ -1144,11 +1221,10 @@ impl CourseExt for DBClient {
                     price = COALESCE($6, price),
                     duration = COALESCE($7, duration),
                     students = COALESCE($8, students),
-                    rating = COALESCE($9, rating),
-                    image = COALESCE($10, image),
-                    category = COALESCE($11, category),
-                    features = COALESCE($12::jsonb, features),
-                    updated_at = $13
+                    image = COALESCE($9, image),
+                    category = COALESCE($10, category),
+                    features = COALESCE($11::jsonb, features),
+                    updated_at = $12
                 WHERE id = $1
                 RETURNING *
             ),
@@ -1159,7 +1235,7 @@ impl CourseExt for DBClient {
                     m->>'title' AS title,
                     (m->>'order')::int AS module_order,
                     $1 AS course_id
-                FROM jsonb_array_elements($14::jsonb) AS m
+                FROM jsonb_array_elements($13::jsonb) AS m
             ),
             module_upsert AS (
                 INSERT INTO modules (id, course_id, title, "order")
@@ -1196,7 +1272,7 @@ impl CourseExt for DBClient {
                     l->>'content_url' AS content_url,
                     l->>'description' AS description,
                     (l->>'order')::int AS lesson_order
-                FROM jsonb_array_elements($15::jsonb) AS l
+                FROM jsonb_array_elements($14::jsonb) AS l
             ),
             lesson_upsert AS (
                 INSERT INTO lessons (id, module_id, title, duration, "type", content_url, description, "order")
@@ -1242,7 +1318,6 @@ impl CourseExt for DBClient {
             .bind(dto.price)
             .bind(dto.duration)
             .bind(dto.students)
-            .bind(dto.rating)
             .bind(dto.image)
             .bind(dto.category)
             .bind(dto.features.map(|f| serde_json::to_value(f).unwrap()))
@@ -1252,7 +1327,7 @@ impl CourseExt for DBClient {
             .execute(&mut *tx)
             .await
             .map_err(|e| {
-                eprintln!("ERROR: {}", e);
+                log::error!("ERROR: {}", e);
                 e
             });
 
@@ -1260,7 +1335,7 @@ impl CourseExt for DBClient {
         Ok(
             self.get_all_courses_with_modules()
                 .await
-                .map_err(|e| { eprintln!("ERROR: {}", e); e })?
+                .map_err(|e| { log::error!("ERROR: {}", e); e })?
                 .into_iter()
                 .find(|c| c.id == course_id)
                 .expect("Curso debería existir después de la actualización")
@@ -1275,7 +1350,7 @@ impl CourseExt for DBClient {
             .bind(course_id)
             .execute(&mut *tx)
             .await.map_err(|e| {
-            eprintln!("ERROR: {}", e);
+            log::error!("ERROR: {}", e);
             e
         })?
         ;
@@ -1288,13 +1363,168 @@ impl CourseExt for DBClient {
         let result = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM courses")
             .fetch_one(&mut *tx)
             .await.map_err(|e| {
-            eprintln!("ERROR: {}", e);
+            log::error!("ERROR: {}", e);
             e
         })?
         ;
         tx.commit().await?;
         Ok(result)
     }
+
+    async fn create_lesson_comment(
+        &self,
+        lesson_id: Uuid,
+        user_id: Uuid,
+        comment: String,
+    ) -> Result<CommentLessonDto, Error> {
+        let mut tx = self.pool.begin().await?;
+        let now = Utc::now();
+        let result = sqlx::query_as::<_, CommentLessonDto>(
+                r#"
+                WITH inserted AS (
+                    INSERT INTO lesson_comments (lesson_id, user_id, content, created_at)
+                    VALUES ($1, $2, $3, NOW())
+                    RETURNING id,lesson_id, user_id, content, created_at
+                )
+                SELECT
+                    inserted.id,
+                    inserted.lesson_id,
+                    inserted.user_id,
+                    u.name AS user_name,
+                    inserted.content,
+                    inserted.created_at
+                FROM inserted
+                JOIN users u ON u.id = inserted.user_id
+                "#,
+            )
+            .bind(lesson_id)
+            .bind(user_id)
+            .bind(comment)
+            .bind(now)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(|e| {
+                log::error!("ERROR: {}", e);
+                e
+            }
+        )?;
+        tx.commit().await?;
+        Ok(result)
+    }
+
+    async fn get_lesson_comments(&self, lesson_id: Uuid) -> Result<Vec<CommentLessonDto>, Error> {
+        let mut tx = self.pool.begin().await?;
+        let result = sqlx::query_as::<_, CommentLessonDto>(
+            r#"
+            SELECT
+                lc.id,
+                lc.lesson_id,
+                lc.user_id,
+                u.name AS user_name,
+                lc.content,
+                lc.created_at
+            FROM lesson_comments lc
+            JOIN users u ON u.id = lc.user_id
+            WHERE lc.lesson_id = $1
+            ORDER BY lc.created_at DESC
+            "#,
+        )
+            .bind(lesson_id)
+            .fetch_all(&mut *tx)
+            .await
+            .map_err(|e| {
+                log::error!("ERROR: {}", e);
+                e
+            })?;
+        tx.commit().await?;
+        Ok(result)
+    }
+
+    async fn delete_lesson_comment(&self, comment_id: Uuid) -> Result<(), Error> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("DELETE FROM lesson_comments WHERE id = $1")
+            .bind(comment_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| {
+                log::error!("ERROR: {}", e);
+                e
+            })?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    async fn create_or_update_rating(
+        &self,
+        course_id: Uuid,
+        user_id: Uuid,
+        rating: i32,
+    ) -> Result<(), Error> {
+
+        sqlx::query!(
+            r#"
+            INSERT INTO course_ratings (course_id, user_id, rating)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (course_id, user_id)
+            DO UPDATE SET
+                rating = EXCLUDED.rating,
+                updated_at = NOW()
+            "#,
+            course_id,
+            user_id,
+            rating
+        )
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+
+    async fn get_rating(
+        &self,
+        course_id: Uuid,
+        user_id: Option<Uuid>,
+    ) -> Result<CourseRatingDto, Error> {
+
+        // 1. Rating global
+        let summary = sqlx::query!(
+            r#"
+            SELECT
+                COALESCE(AVG(rating), 0)::float AS average,
+                COUNT(*)::bigint AS count
+            FROM course_ratings
+            WHERE course_id = $1
+            "#,
+            course_id
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        // 2. Rating del usuario (opcional)
+        let user_rating = if let Some(user_id) = user_id {
+            sqlx::query_scalar!(
+                r#"
+                SELECT rating
+                FROM course_ratings
+                WHERE course_id = $1 AND user_id = $2
+                "#,
+                course_id,
+                user_id
+            )
+            .fetch_optional(&self.pool)
+            .await?
+        } else {
+            None
+        };
+
+        Ok(CourseRatingDto {
+            average: summary.average.unwrap_or(0.0),
+            count: summary.count.unwrap_or(0),
+            user_rating,
+        })
+    }
+
 }
 // ===================== //
 
@@ -1385,7 +1615,7 @@ impl AchievementExt for DBClient {
         .bind(now)
         .fetch_one(&mut *tx)
         .await.map_err(|e| {
-            eprintln!("ERROR: {}", e);
+            log::error!("ERROR: {}", e);
             e
         })?
         ;
@@ -1413,7 +1643,7 @@ impl AchievementExt for DBClient {
         .bind(offset)
         .fetch_all(&mut *tx)
         .await.map_err(|e| {
-            eprintln!("ERROR: {}", e);
+            log::error!("ERROR: {}", e);
             e
         })?
         ;
@@ -1434,7 +1664,7 @@ impl AchievementExt for DBClient {
         .bind(achievement_id)
         .fetch_optional(&mut *tx)
         .await.map_err(|e| {
-            eprintln!("ERROR: {}", e);
+            log::error!("ERROR: {}", e);
             e
         })?
         ;
@@ -1448,7 +1678,7 @@ impl AchievementExt for DBClient {
             .bind(achievement_id)
             .execute(&mut *tx)
             .await.map_err(|e| {
-            eprintln!("ERROR: {}", e);
+            log::error!("ERROR: {}", e);
             e
         })?
         ;
@@ -1479,7 +1709,7 @@ impl UserAchievementExt for DBClient {
         .bind(achievement_id)
         .fetch_one(&mut *tx)
         .await.map_err(|e| {
-            eprintln!("ERROR: {}", e);
+            log::error!("ERROR: {}", e);
             e
         })?
         ;
@@ -1506,7 +1736,7 @@ impl UserAchievementExt for DBClient {
         .bind(Utc::now())
         .fetch_one(&mut *tx)
         .await.map_err(|e| {
-            eprintln!("ERROR: {}", e);
+            log::error!("ERROR: {}", e);
             e
         })?
         ;
@@ -1538,7 +1768,7 @@ impl UserAchievementExt for DBClient {
         .bind(user_id)
         .fetch_all(&mut *tx)
         .await.map_err(|e| {
-            eprintln!("ERROR: {}", e);
+            log::error!("ERROR: {}", e);
             e
         })?
         ;
@@ -1564,7 +1794,7 @@ impl UserAchievementExt for DBClient {
         .bind(achievement_id)
         .fetch_one(&mut *tx)
         .await.map_err(|e| {
-            eprintln!("ERROR: {}", e);
+            log::error!("ERROR: {}", e);
             e
         })?
         ;
@@ -1667,7 +1897,7 @@ impl CoursePurchaseExt for DBClient {
         .fetch_one(&mut *tx)
         .await
         .map_err(|e| {
-            eprintln!("ERROR: {}", e);
+            log::error!("ERROR: {}", e);
             e
         })?;
 
@@ -1798,7 +2028,7 @@ impl CoursePurchaseExt for DBClient {
         .fetch_one(&mut *tx)
         .await
         .map_err(|e| {
-            eprint!("Error: {}", e);
+            log::error!("Error: {}", e);
             e
         });
         tx.commit().await?;
@@ -1821,7 +2051,7 @@ impl CoursePurchaseExt for DBClient {
         .fetch_all(&mut *tx)
         .await
         .map_err(|e| {
-            eprint!("Error: {}", e);
+            log::error!("Error: {}", e);
             e
         })
         .map(|user_courses| {
@@ -1847,7 +2077,7 @@ impl CoursePurchaseExt for DBClient {
         .bind(course_id)
         .fetch_optional(&mut *tx)
         .await.map_err(|e| {
-            eprintln!("ERROR: {}", e);
+            log::error!("ERROR: {}", e);
             e
         });
         tx.commit().await?;
@@ -1879,7 +2109,7 @@ impl CoursePurchaseExt for DBClient {
         .execute(&mut *tx)
         .await.map_err(|e|
             {
-                eprint!("Error: {}", e);
+                log::error!("Error: {}", e);
                 e
             }
         );
@@ -1918,7 +2148,7 @@ impl CoursePurchaseExt for DBClient {
         .execute(&mut *tx)
         .await
         .map_err(|e| {
-            eprint!("Error: {}", e);
+            log::error!("Error: {}", e);
             e
         });
 

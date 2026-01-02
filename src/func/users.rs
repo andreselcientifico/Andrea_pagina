@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use actix_web::{ 
-   HttpResponse, Responder, web::{ ReqData,Data, Json, Query,  resource, scope, get, put}
+   HttpResponse, Responder, web::{ ReqData,Data, Json, Query}
 };
 use validator::Validate;
 
@@ -8,29 +8,9 @@ use crate::{
     AppState, 
     config::dtos::{FilterUserDto, NameUpdateDTO, RequestQueryDto, Response, RoleUpdateDTO, UserData, UserListResponseDto, UserPasswordUpdateDTO, UserResponseDto}, 
     db::db::UserExt, errors::error::{ErrorMessage, HttpError}, 
-    middleware::middleware::{AuthMiddlewareFactory, JWTAuthMiddleware, RoleCheck}, 
-    models::models::UserRole, utils::password
+    middleware::middleware::{JWTAuthMiddleware}, 
+    utils::password
 };
-
-
-pub fn users_scope(app_state: Arc<AppState>) -> impl actix_web::dev::HttpServiceFactory {
-    scope("/users")
-        .service(resource("/me")
-        .route(get().to(get_me))
-        .wrap(AuthMiddlewareFactory::new(app_state.clone()))
-        .wrap(RoleCheck::new(vec![UserRole::User, UserRole::Admin])),
-    )
-
-    .service(resource("")
-        .route(get().to(get_users))
-        .wrap(RoleCheck::new(vec![UserRole::Admin])),
-    )
-    .service(resource("/name").route(put().to(update_user_name)))
-    .service(resource("/role").route(put().to(update_user_role)))
-    .service(resource("/password").route(put().to(update_user_password)))
-}
-
-
 
 
 pub async fn get_me(

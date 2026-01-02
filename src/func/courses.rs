@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use actix_web::{  HttpResponse, put, web::{ self, Data, Json, Path, Query, ReqData, scope } };
+use actix_web::{  HttpResponse, put, web::{ self, Data, Json, Path, Query, ReqData } };
 use validator::Validate;
 use uuid::Uuid;
 use serde::Deserialize;
@@ -7,40 +7,90 @@ use sqlx::Error as SqlxError;
 use serde_json::json;
 
 use crate::{
-    AppState, config::dtos::{ CreateCourseDTO, ProductDTO, UpdateCourseDTO, UpdateLessonProgressDTO }, db::db::{CourseExt, CoursePurchaseExt}, errors::error::{ ErrorMessage, HttpError }, func::payments::create_product, middleware::middleware::{ AccessCheck, AuthMiddlewareFactory, JWTAuthMiddleware, RequiredAccess, RoleCheck }, models::models::UserRole
+    AppState, 
+    config::dtos::{ CreateCourseDTO, CreatedCommentDto, CreatedRatingDto, ProductDTO, UpdateCourseDTO, UpdateLessonProgressDTO }, 
+    db::db::{CourseExt, CoursePurchaseExt}, 
+    errors::error::{ ErrorMessage, HttpError }, 
+    func::payments::{create_product }, 
+    middleware::middleware::{ JWTAuthMiddleware },
 };
 
-pub fn courses_scope(app_state: Arc<AppState>) -> impl actix_web::dev::HttpServiceFactory {
-    scope("/courses")
-        .route("", web::get().to(get_courses))
-        .service(
-            scope("/videos")
-                // Middleware solo para /courses/videos
-                .wrap(AuthMiddlewareFactory::new(app_state.clone()))
-                .wrap(RoleCheck::new(vec![UserRole::Admin]))
-                .route("", web::get().to(get_courses_with_modules))
-        )
-        .service(
-            scope("/{id}/videos")
-                .wrap(AuthMiddlewareFactory::new(app_state.clone()))
-                .wrap(AccessCheck::new(vec![
-                    RequiredAccess::Role(UserRole::Admin),
-                    RequiredAccess::PremiumAccess,
-                    RequiredAccess::OwnedCourse(Uuid::nil()),
-                    RequiredAccess::AnyCourseAccess
-                ]))
-                .route("", web::get().to(get_course_with_modules))
-        )
-        .route("/{id}", web::get().to(get_course))
-        .service(
-            scope("")
-                .wrap(AuthMiddlewareFactory::new(app_state.clone()))
-                .wrap(RoleCheck::new(vec![UserRole::Admin]))
-                .route("", web::post().to(create_course))
-                .route("/{id}", web::put().to(update_course))
-                .route("/{id}", web::delete().to(delete_course))
-        )
-        
+//===================COMMENTS===================//
+
+pub async fn create_lesson_comment(
+    path: Path<String>,
+    app_state: Data<Arc<AppState>>,
+    _auth: web::ReqData<JWTAuthMiddleware>, // requiere autenticación
+    Json(body): Json<CreatedCommentDto>
+) -> Result<HttpResponse, HttpError> {
+    let course_id = Uuid::parse_str(&path.into_inner())
+        .map_err(|e| HttpError::bad_request(e.to_string()))?;
+
+    Ok(HttpResponse::Ok().json(
+        app_state.db_client
+        .create_lesson_comment(course_id, _auth.user.id, body.content).await
+        .map_err(|e| HttpError::server_error(e.to_string()))?
+    ))
+}
+
+pub async fn get_lesson_comments(
+    path: Path<String>,
+    app_state: Data<Arc<AppState>>
+) -> Result<HttpResponse, HttpError> {
+    let course_id = Uuid::parse_str(&path.into_inner())
+        .map_err(|e| HttpError::bad_request(e.to_string()))?;
+
+    Ok(HttpResponse::Ok().json(
+        app_state.db_client
+        .get_lesson_comments(course_id).await
+        .map_err(|e| HttpError::server_error(e.to_string()))?
+    ))
+}
+
+pub async fn delete_comment(
+    path: Path<String>,
+    app_state: Data<Arc<AppState>>,
+    _auth: web::ReqData<JWTAuthMiddleware>  // requiere autenticación
+) -> Result<HttpResponse, HttpError> {
+    let comment_id = Uuid::parse_str(&path.into_inner())
+        .map_err(|e| HttpError::bad_request(e.to_string()))?;
+
+    app_state.db_client
+        .delete_lesson_comment(comment_id).await
+        .map_err(|e| HttpError::server_error(e.to_string()))?;
+
+    Ok(HttpResponse::Ok().json(()))
+}
+
+pub async fn create_or_update_rating(
+    path: Path<String>,
+    app_state: Data<Arc<AppState>>,
+    _auth: web::ReqData<JWTAuthMiddleware>, // requiere autenticación
+    Json(body): Json<CreatedRatingDto>
+) -> Result<HttpResponse, HttpError> {
+    let course_id = Uuid::parse_str(&path.into_inner())
+        .map_err(|e| HttpError::bad_request(e.to_string()))?;
+
+    app_state.db_client
+        .create_or_update_rating(course_id, _auth.user.id, body.rating).await
+        .map_err(|e| HttpError::server_error(e.to_string()))?;
+
+    Ok(HttpResponse::Ok().json(()))
+}
+
+pub async fn get_rating(
+    path: Path<String>,
+    app_state: Data<Arc<AppState>>,
+    _auth: web::ReqData<JWTAuthMiddleware>
+) -> Result<HttpResponse, HttpError> {
+    let course_id = Uuid::parse_str(&path.into_inner())
+        .map_err(|e| HttpError::bad_request(e.to_string()))?;
+
+    let rating = app_state.db_client
+        .get_rating(course_id, Some(_auth.user.id)).await
+        .map_err(|e| HttpError::server_error(e.to_string()))?;
+
+    Ok(HttpResponse::Ok().json(rating))
 }
 
 
@@ -204,7 +254,7 @@ pub async fn delete_course(
     Ok(HttpResponse::NoContent().finish())
 }
 
-#[put("/courses/{course_id}/lessons/{lesson_id}/progress")]
+#[put("/{course_id}/lessons/{lesson_id}/progress")]
 pub async fn update_lesson_progress(
     path: Path<(String,String)>,
     user: ReqData<JWTAuthMiddleware>,
