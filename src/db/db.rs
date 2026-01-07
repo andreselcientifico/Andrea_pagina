@@ -3,10 +3,10 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 
-use sqlx::{Pool, Postgres, query_scalar, query_as, query, Error};
+use sqlx::{Pool, Postgres, query_scalar, query_as, query, Error, Row};
 use uuid::Uuid;
 
-use crate::{config::dtos::{CommentLessonDto, CourseRatingDto, CourseWithModulesDto, CreateCourseDTO, CreateLessonDTO, CreateModuleDTO, LessonDto, ModuleWithLessonsDto, UpdateCourseDTO, UserCourseDto},  models::models::{Achievement, Course, CourseProgress, Lesson, Module, Payment, User, UserAchievement, UserCourse, UserRole}};
+use crate::{config::dtos::{CommentLessonDto, CourseRatingDto, CourseWithModulesDto, CreateCourseDTO, CreateLessonDTO, CreateModuleDTO, LessonDto, ModuleWithLessonsDto, UpdateCourseDTO, UserAchievementDto, UserCourseDto},  models::models::{Achievement, Course, CourseProgress, Lesson, Module, Notification, PasswordResetToken, Payment, Subscription, SubscriptionPlan, User, UserAchievement, UserCourse, UserRole}};
 
 #[derive(Debug, Clone)]
 pub struct DBClient {
@@ -89,6 +89,17 @@ pub trait UserExt {
         token: &str,
         expires_at: DateTime<Utc>,
     ) -> Result<(), Error>;
+
+    async fn increment_user_stat(
+        &self,
+        user_id: Uuid,
+        stat_type: &str,
+    ) -> Result<i32, Error>;
+
+    async fn get_user_stats(
+        &self,
+        user_id: Uuid,
+    ) -> Result<HashMap<String, i32>, Error>;
 }
 
 #[async_trait]
@@ -565,6 +576,120 @@ impl UserExt for DBClient {
         ;
         tx.commit().await?;
         Ok(())
+    }
+
+    async fn increment_user_stat(
+        &self,
+        user_id: Uuid,
+        stat_type: &str,
+    ) -> Result<i32, Error> {
+        let mut tx = self.pool.begin().await?;
+
+        let value = sqlx::query_scalar!(
+            r#"
+            INSERT INTO user_stats (user_id, stat_type, value, updated_at)
+            VALUES ($1, $2, 1, NOW())
+            ON CONFLICT (user_id, stat_type)
+            DO UPDATE
+                SET value = user_stats.value + 1,
+                    updated_at = NOW()
+            RETURNING value
+            "#,
+            user_id,
+            stat_type
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+        Ok(value as i32)
+    }
+
+    async fn get_user_stats(
+        &self,
+        user_id: Uuid,
+    ) -> Result<HashMap<String, i32>, Error> {
+
+        let mut stats = HashMap::new();
+
+        // Estadísticas incrementales
+        let rows = sqlx::query!(
+            "SELECT stat_type, value FROM user_stats WHERE user_id = $1",
+            user_id
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        for row in rows {
+            stats.insert(row.stat_type, row.value);
+        }
+
+        // Cursos completados
+        let courses_completed = sqlx::query_scalar::<_, i32>(
+            r#"
+            SELECT COUNT(DISTINCT uc.course_id)
+            FROM user_courses uc
+            WHERE uc.user_id = $1
+            AND EXISTS (
+                SELECT 1
+                FROM user_lesson_progress lp
+                JOIN lessons l ON lp.lesson_id = l.id
+                JOIN modules m ON l.module_id = m.id
+                WHERE lp.user_id = $1
+                AND lp.is_completed = true
+                AND m.course_id = uc.course_id
+                GROUP BY m.course_id
+                HAVING COUNT(*) = (
+                    SELECT COUNT(*)
+                    FROM lessons l2
+                    JOIN modules m2 ON l2.module_id = m2.id
+                    WHERE m2.course_id = uc.course_id
+                )
+            )
+            "#
+        )
+        .bind(user_id)
+        .fetch_one(&self.pool)
+        .await
+        .unwrap_or(0);
+
+        stats.insert("course_completed".to_string(), courses_completed);
+
+        // Lecciones completadas
+        let lessons_completed = sqlx::query_scalar::<_, i32>(
+            "SELECT COUNT(*) FROM user_lesson_progress WHERE user_id = $1 AND is_completed = true",
+        )
+        .bind(user_id)
+        .fetch_one(&self.pool)
+        .await
+        .unwrap_or(0);
+
+        stats.insert("lesson_completed".to_string(), lessons_completed);
+
+        // Cursos inscritos
+        let courses_enrolled = sqlx::query_scalar::<_, i32>(
+            "SELECT COUNT(*) FROM user_courses WHERE user_id = $1",
+        )
+        .bind(user_id)
+        .fetch_one(&self.pool)
+        .await
+        .unwrap_or(0);
+
+        stats.insert("courses_enrolled".to_string(), courses_enrolled);
+
+        // Comentarios
+        let comments_created = sqlx::query_scalar::<_, i32>(
+            "SELECT COUNT(*) FROM comments WHERE user_id = $1",
+        )
+        .bind(user_id)
+        .fetch_one(&self.pool)
+        .await
+        .unwrap_or(0);
+
+        stats.insert("comments_created".to_string(), comments_created);
+
+
+        Ok(stats)
     }
 }
 
@@ -1714,6 +1839,21 @@ pub trait AchievementExt {
         name: T,
         description: Option<T>,
         icon: Option<T>,
+        trigger_type: &str,
+        trigger_value: i32,
+        active: bool,
+    ) -> Result<Achievement, Error>;
+
+    /// Actualiza un logro.
+    async fn update_achievement<T: Into<String> + Send>(
+        &self,
+        achievement_id: Uuid,
+        name: Option<T>,
+        description: Option<T>,
+        icon: Option<T>,
+        trigger_type: Option<&str>,
+        trigger_value: Option<i32>,
+        active: Option<bool>,
     ) -> Result<Achievement, Error>;
 
     /// Obtiene todos los logros existentes (paginados).
@@ -1754,7 +1894,7 @@ pub trait UserAchievementExt {
     async fn get_user_achievements(
         &self,
         user_id: Uuid,
-    ) -> Result<Vec<Achievement>, Error>;
+    ) -> Result<Vec<UserAchievementDto>, Error>;
 
     /// Verifica si un usuario ya ha ganado un logro específico.
     #[allow(dead_code)]
@@ -1763,6 +1903,27 @@ pub trait UserAchievementExt {
         user_id: Uuid,
         achievement_id: Uuid,
     ) -> Result<bool, Error>;
+
+    /// Obtiene logros de usuario con detalles completos.
+    async fn get_user_achievements_with_details(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<serde_json::Value>, Error>;
+
+    /// Verifica y otorga logros automáticamente basados en acciones.
+    async fn check_and_award_achievements(
+        &self,
+        user_id: Uuid,
+        action: &str,
+        value: Option<i32>,
+    ) -> Result<Vec<Achievement>, Error>;
+}
+
+#[async_trait]
+pub trait NotificationExt {
+    async fn get_user_notifications(&self, user_id: Uuid) -> Result<Vec<Notification>, Error>;
+    async fn mark_notification_read(&self, notification_id: Uuid) -> Result<(), Error>;
+    async fn create_notification(&self, user_id: Uuid, title: &str, message: &str, sent_via: &str) -> Result<Notification, Error>;
 }
 
 /// Implementación para la conexión principal del sistema (`DBClient`).
@@ -1773,6 +1934,9 @@ impl AchievementExt for DBClient {
         name: T,
         description: Option<T>,
         icon: Option<T>,
+        trigger_type: &str,
+        trigger_value: i32,
+        active: bool,
     ) -> Result<Achievement, Error> {
         let mut tx = self.pool.begin().await?;
         let id = Uuid::new_v4();
@@ -1780,15 +1944,18 @@ impl AchievementExt for DBClient {
 
         let achievement = sqlx::query_as::<_, Achievement>(
             r#"
-            INSERT INTO achievements (id, name, description, icon, created_at)
-            VALUES ($1, $2, $3, $4, $5)
-            RETURNING id, name, description, icon, created_at
+            INSERT INTO achievement (id, name, description, icon, trigger_type, trigger_value, active, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            RETURNING id, name, description, icon, trigger_type, trigger_value, active, created_at
             "#
         )
         .bind(id)
         .bind(name.into())
         .bind(description.map(|d| d.into()))
         .bind(icon.map(|i| i.into()))
+        .bind(trigger_type)
+        .bind(trigger_value)
+        .bind(active)
         .bind(now)
         .fetch_one(&mut *tx)
         .await.map_err(|e| {
@@ -1796,6 +1963,47 @@ impl AchievementExt for DBClient {
             e
         })?
         ;
+        tx.commit().await?;
+        Ok(achievement)
+    }
+
+    async fn update_achievement<T: Into<String> + Send>(
+        &self,
+        achievement_id: Uuid,
+        name: Option<T>,
+        description: Option<T>,
+        icon: Option<T>,
+        trigger_type: Option<&str>,
+        trigger_value: Option<i32>,
+        active: Option<bool>,
+    ) -> Result<Achievement, Error> {
+        let mut tx = self.pool.begin().await?;
+
+        let achievement = sqlx::query_as::<_, Achievement>(
+            r#"
+            UPDATE achievement
+            SET name = COALESCE($2, name),
+                description = COALESCE($3, description),
+                icon = COALESCE($4, icon),
+                trigger_type = COALESCE($5, trigger_type),
+                trigger_value = COALESCE($6, trigger_value),
+                active = COALESCE($7, active)
+            WHERE id = $1
+            RETURNING id, name, description, icon, trigger_type, trigger_value, active, created_at
+            "#,
+        )
+        .bind(achievement_id)
+        .bind(name.map(|n| n.into()))
+        .bind(description.map(|d| d.into()))
+        .bind(icon.map(|i| i.into()))
+        .bind(trigger_type)
+        .bind(trigger_value)
+        .bind(active)
+        .fetch_one(&mut *tx)
+        .await.map_err(|e| {
+            log::error!("ERROR: {}", e);
+            e
+        })?;
         tx.commit().await?;
         Ok(achievement)
     }
@@ -1810,8 +2018,8 @@ impl AchievementExt for DBClient {
 
         let achievements = sqlx::query_as::<_, Achievement>(
             r#"
-            SELECT id, name, description, icon, created_at
-            FROM achievements
+            SELECT id, name, description, icon, trigger_type, trigger_value, active, created_at
+            FROM achievement
             ORDER BY created_at DESC
             LIMIT $1 OFFSET $2
             "#
@@ -1833,8 +2041,8 @@ impl AchievementExt for DBClient {
         let mut tx = self.pool.begin().await?;
         let achievement = sqlx::query_as::<_, Achievement>(
             r#"
-            SELECT id, name, description, icon, created_at
-            FROM achievements
+            SELECT id, name, description, icon, trigger_type, trigger_value, active, created_at
+            FROM achievement
             WHERE id = $1
             "#
         )
@@ -1851,7 +2059,7 @@ impl AchievementExt for DBClient {
 
     async fn delete_achievement(&self, achievement_id: Uuid) -> Result<(), Error> {
         let mut tx = self.pool.begin().await?;
-        sqlx::query("DELETE FROM achievements WHERE id = $1")
+        sqlx::query("DELETE FROM achievement WHERE id = $1")
             .bind(achievement_id)
             .execute(&mut *tx)
             .await.map_err(|e| {
@@ -1876,7 +2084,7 @@ impl UserAchievementExt for DBClient {
 
         let user_achievement = sqlx::query_as::<_, UserAchievement>(
             r#"
-            INSERT INTO user_achievements (id, user_id, achievement_id, earned, earned_at)
+            INSERT INTO user_achievement (id, user_id, achievement_id, earned, earned_at)
             VALUES ($1, $2, $3, false, NULL)
             RETURNING id, user_id, achievement_id, earned, earned_at
             "#
@@ -1900,23 +2108,23 @@ impl UserAchievementExt for DBClient {
         achievement_id: Uuid,
     ) -> Result<UserAchievement, Error> {
         let mut tx = self.pool.begin().await?;
+
         let user_achievement = sqlx::query_as::<_, UserAchievement>(
             r#"
-            UPDATE user_achievements
-            SET earned = true, earned_at = $3
-            WHERE user_id = $1 AND achievement_id = $2
+            INSERT INTO user_achievement (id, user_id, achievement_id, earned, earned_at)
+            VALUES ($1, $2, $3, true, $4)
+            ON CONFLICT (user_id, achievement_id)
+            DO UPDATE SET earned = true, earned_at = EXCLUDED.earned_at
             RETURNING id, user_id, achievement_id, earned, earned_at
-            "#
+            "#,
         )
+        .bind(Uuid::new_v4())
         .bind(user_id)
         .bind(achievement_id)
         .bind(Utc::now())
         .fetch_one(&mut *tx)
-        .await.map_err(|e| {
-            log::error!("ERROR: {}", e);
-            e
-        })?
-        ;
+        .await?;
+
         tx.commit().await?;
         Ok(user_achievement)
     }
@@ -1924,32 +2132,36 @@ impl UserAchievementExt for DBClient {
     async fn get_user_achievements(
         &self,
         user_id: Uuid,
-    ) -> Result<Vec<Achievement>, Error> {
-        let mut tx = self.pool.begin().await?;
-        let achievements = sqlx::query_as::<_, Achievement>(
+    ) -> Result<Vec<UserAchievementDto>, Error> {
+        let achievements = sqlx::query_as::<_, UserAchievementDto>(
             r#"
-            SELECT 
+            SELECT
                 a.id,
                 a.name,
                 a.description,
                 a.icon,
+                a.trigger_type,
+                a.trigger_value,
+                a.active,
+                COALESCE(ua.earned, false) AS earned,
+                ua.earned_at,
                 a.created_at
             FROM achievement a
-            INNER JOIN user_achievement ua 
+            LEFT JOIN user_achievement ua
                 ON ua.achievement_id = a.id
-            WHERE ua.user_id = $1
-            AND ua.earned = TRUE
-            ORDER BY ua.earned_at DESC NULLS LAST
+                AND ua.user_id = $1
+            WHERE a.active = true
+            ORDER BY a.created_at ASC
             "#
         )
         .bind(user_id)
-        .fetch_all(&mut *tx)
-        .await.map_err(|e| {
-            log::error!("ERROR: {}", e);
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| {
+            log::error!("Error: {}", e);
             e
-        })?
-        ;
-        tx.commit().await?;
+        })?;
+
         Ok(achievements)
     }
 
@@ -1960,27 +2172,230 @@ impl UserAchievementExt for DBClient {
     ) -> Result<bool, Error> {
         let mut tx = self.pool.begin().await?;
         let exists = sqlx::query_scalar::<_, bool>(
-            r#"
-            SELECT EXISTS(
-                SELECT 1 FROM user_achievements
-                WHERE user_id = $1 AND achievement_id = $2 AND earned = true
-            )
-            "#
+            "SELECT EXISTS(SELECT 1 FROM user_achievement WHERE user_id = $1 AND achievement_id = $2 AND earned = true)",
         )
         .bind(user_id)
         .bind(achievement_id)
         .fetch_one(&mut *tx)
-        .await.map_err(|e| {
-            log::error!("ERROR: {}", e);
-            e
-        })?
-        ;
+        .await?;
         tx.commit().await?;
         Ok(exists)
     }
+
+    async fn get_user_achievements_with_details(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<serde_json::Value>, Error> {
+        let mut tx = self.pool.begin().await?;
+        let rows = sqlx::query(
+            r#"
+            SELECT
+                a.id as "a_id",
+                a.name,
+                a.description,
+                a.icon,
+                a.trigger_type,
+                a.trigger_value,
+                a.active,
+                a.created_at as "a_created_at",
+                ua.earned,
+                ua.earned_at
+            FROM achievement a
+            LEFT JOIN user_achievement ua ON ua.achievement_id = a.id AND ua.user_id = $1
+            ORDER BY a.created_at DESC
+            "#,
+        )
+        .bind(user_id)
+        .fetch_all(&mut *tx)
+        .await.map_err(|e| {
+            log::error!("ERROR: {}", e);
+            e
+        })?;
+
+        let result: Vec<serde_json::Value> = rows
+            .into_iter()
+            .map(|row| {
+                serde_json::json!({
+                    "id": row.get::<Uuid, _>("a_id"),
+                    "name": row.get::<String, _>("name"),
+                    "description": row.get::<Option<String>, _>("description"),
+                    "icon": row.get::<Option<String>, _>("icon"),
+                    "trigger_type": row.get::<String, _>("trigger_type"),
+                    "trigger_value": row.get::<i32, _>("trigger_value"),
+                    "active": row.get::<bool, _>("active"),
+                    "created_at": row.get::<chrono::DateTime<chrono::Utc>, _>("a_created_at"),
+                    "earned": row.get::<Option<bool>, _>("earned").unwrap_or(false),
+                    "earned_at": row.get::<Option<chrono::DateTime<chrono::Utc>>, _>("earned_at")
+                })
+            })
+            .collect();
+
+        tx.commit().await?;
+        Ok(result)
+    }
+
+    async fn check_and_award_achievements(
+        &self,
+        user_id: Uuid,
+        action: &str,
+        value: Option<i32>,
+    ) -> Result<Vec<Achievement>, Error> {
+        let mut tx = self.pool.begin().await?;
+        let fallback_value = value.unwrap_or(1);
+
+        // 1️⃣ Calcular el valor actual del usuario
+        let current_value: i32 = match action {
+            "course_completed" => {
+                sqlx::query_scalar::<_, i64>(
+                    r#"
+                    SELECT COUNT(DISTINCT uc.course_id)
+                    FROM user_courses uc
+                    WHERE uc.user_id = $1
+                    AND EXISTS (
+                        SELECT 1
+                        FROM user_lesson_progress lp
+                        JOIN lessons l ON lp.lesson_id = l.id
+                        JOIN modules m ON l.module_id = m.id
+                        WHERE lp.user_id = $1
+                        AND lp.is_completed = true
+                        AND m.course_id = uc.course_id
+                        GROUP BY m.course_id
+                        HAVING COUNT(*) = (
+                            SELECT COUNT(*)
+                            FROM lessons l2
+                            JOIN modules m2 ON l2.module_id = m2.id
+                            WHERE m2.course_id = uc.course_id
+                        )
+                    )
+                    "#
+                )
+                .bind(user_id)
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })? as i32
+            }
+
+            "lesson_completed" => {
+                sqlx::query_scalar::<_, i64>(
+                    "SELECT COUNT(*) FROM user_lesson_progress WHERE user_id = $1 AND is_completed = true"
+                )
+                .bind(user_id)
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })? as i32
+            }
+
+            "courses_enrolled" => {
+                sqlx::query_scalar::<_, i64>(
+                    "SELECT COUNT(*) FROM user_courses WHERE user_id = $1"
+                )
+                .bind(user_id)
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })? as i32
+            }
+            
+            "comments_created" => {
+                sqlx::query_scalar::<_, i64>(
+                    "SELECT COUNT(*) FROM lesson_comments WHERE user_id = $1"
+                )
+                .bind(user_id)
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })? as i32
+            }
+
+            "login_streak" => {
+                let count: i32 = sqlx::query_scalar(
+                    r#"
+                    SELECT COALESCE(
+                        (SELECT value
+                        FROM user_stats
+                        WHERE user_id = $1 AND stat_type = 'login_streak'),
+                        0
+                    )
+                    "#
+                )
+                .bind(user_id)
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
+
+                count as i32
+            }
+
+            _ => fallback_value,
+        };
+
+        // 2️⃣ Obtener logros alcanzables
+        let achievements = sqlx::query_as::<_, Achievement>(
+            r#"
+            SELECT id, name, description, icon, trigger_type, trigger_value, active, created_at
+            FROM achievement
+            WHERE trigger_type = $1
+              AND trigger_value <= $2
+              AND active = true
+            "#
+        )
+        .bind(action)
+        .bind(current_value)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
+
+        let mut awarded = Vec::new();
+
+        // 3️⃣ Insertar / actualizar logros de forma atómica
+        for achievement in achievements {
+            let was_awarded = sqlx::query_scalar::<_, bool>(
+                r#"
+                INSERT INTO user_achievement (user_id, achievement_id, earned, earned_at)
+                VALUES ($1, $2, true, NOW())
+                ON CONFLICT (user_id, achievement_id)
+                DO UPDATE
+                SET earned = true,
+                    earned_at = COALESCE(user_achievement.earned_at, NOW())
+                WHERE user_achievement.earned = false
+                RETURNING true
+                "#
+            )
+            .bind(user_id)
+            .bind(achievement.id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?
+            .unwrap_or(false);
+
+            if was_awarded {
+                awarded.push(achievement);
+            }
+        }
+
+        tx.commit().await?;
+        Ok(awarded)
+    }
 }
-
-
 
 #[async_trait]
 pub trait CoursePurchaseExt {
@@ -2158,6 +2573,10 @@ impl CoursePurchaseExt for DBClient {
             .await?;
         }
         tx.commit().await?;
+
+        // Verificar logros de cursos inscritos
+        let _ = self.check_and_award_achievements(user_id, "courses_enrolled", None).await;
+
         Ok(())
     }
 
@@ -2406,9 +2825,651 @@ impl CoursePurchaseExt for DBClient {
         )
         .execute(&mut *tx)
         .await?;
+        tx.commit().await?;
+        // Otorgar logros después del commit
+        if is_completed {
+            let _ = self
+                .check_and_award_achievements(user_id, "lesson_completed", None)
+                .await;
+        }
+
+        if progress_percentage >= 100.0 {
+            let _ = self
+                .check_and_award_achievements(user_id, "course_completed", None)
+                .await;
+        }
+    
+        Ok(())
+    }
+
+}
+
+#[async_trait]
+pub trait SubscriptionPlanExt {
+    async fn create_subscription_plan(
+        &self,
+        name: &str,
+        description: Option<&String>,
+        price: f64,
+        duration_months: i32,
+        features: Option<&serde_json::Value>,
+        paypal_plan_id: Option<&str>,
+    ) -> Result<SubscriptionPlan, Error>;
+
+    async fn update_subscription_plan(
+        &self,
+        plan_id: Uuid,
+        name: Option<&str>,
+        description: Option<&String>,
+        price: Option<f64>,
+        duration_months: Option<i32>,
+        features: Option<&serde_json::Value>,
+        paypal_plan_id: Option<&str>,
+        active: Option<bool>,
+    ) -> Result<SubscriptionPlan, Error>;
+
+    async fn delete_subscription_plan(&self, plan_id: Uuid) -> Result<(), Error>;
+
+    async fn get_subscription_plans(&self) -> Result<Vec<SubscriptionPlan>, Error>;
+}
+
+#[async_trait]
+pub trait SubscriptionExt {
+    async fn create_subscription(
+        &self,
+        user_id: Uuid,
+        plan_id: &String,
+        paypal_id: &String,
+    ) -> Result<Subscription, Error>;
+
+    async fn get_user_subscriptions(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<Subscription>, Error>;
+
+    async fn cancel_subscription(
+        &self,
+        subscription_id: Uuid,
+    ) -> Result<(), Error>;
+
+    async fn update_subscription_end_time(
+        &self,
+        paypal_subscription_id: &str,
+    ) -> Result<(), Error>;
+
+    async fn update_subscription_status(
+        &self,
+        paypal_subscription_id: &str,
+        status: bool,
+    ) -> Result<(), Error>;
+
+    async fn expire_subscription(
+        &self,
+        paypal_subscription_id: &str,
+    ) -> Result<(), Error>;
+
+    async fn check_user_has_active_subscription(
+        &self,
+        user_id: Uuid,
+    ) -> Result<bool, Error>;
+}
+
+#[async_trait]
+impl SubscriptionPlanExt for DBClient {
+    async fn create_subscription_plan(
+        &self,
+        name: &str,
+        description: Option<&String>,
+        price: f64,
+        duration_months: i32,
+        features: Option<&serde_json::Value>,
+        paypal_plan_id: Option<&str>,
+    ) -> Result<SubscriptionPlan, Error> {
+        let mut tx = self.pool.begin().await?;
+        let id = Uuid::new_v4();
+        let now = Utc::now();
+
+        let plan = sqlx::query_as::<_, SubscriptionPlan>(
+            r#"
+            INSERT INTO subscription_plans (id, name, description, price, duration_months, features, paypal_plan_id, active, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, true, $8, $9)
+            RETURNING id, name, description, price, duration_months, features, paypal_plan_id, active, created_at, updated_at
+            "#,
+        )
+        .bind(id)
+        .bind(name)
+        .bind(description)
+        .bind(price)
+        .bind(duration_months)
+        .bind(features)
+        .bind(paypal_plan_id)
+        .bind(now)
+        .bind(now)
+        .fetch_one(&mut *tx)
+        .await.map_err(|e| {
+            log::error!("ERROR: {}", e);
+            e
+        })?;
+        tx.commit().await?;
+        Ok(plan)
+    }
+
+    async fn update_subscription_plan(
+        &self,
+        plan_id: Uuid,
+        name: Option<&str>,
+        description: Option<&String>,
+        price: Option<f64>,
+        duration_months: Option<i32>,
+        features: Option<&serde_json::Value>,
+        paypal_plan_id: Option<&str>,
+        active: Option<bool>,
+    ) -> Result<SubscriptionPlan, Error> {
+        let mut tx = self.pool.begin().await?;
+        let now = Utc::now();
+
+        let plan = sqlx::query_as::<_, SubscriptionPlan>(
+            r#"
+            UPDATE subscription_plans
+            SET name = COALESCE($2, name),
+                description = COALESCE($3, description),
+                price = COALESCE($4, price),
+                duration_months = COALESCE($5, duration_months),
+                features = COALESCE($6, features),
+                paypal_plan_id = COALESCE($7, paypal_plan_id),
+                active = COALESCE($8, active),
+                updated_at = $9
+            WHERE id = $1
+            RETURNING id, name, description, price, duration_months, features, paypal_plan_id, active, created_at, updated_at
+            "#,
+        )
+        .bind(plan_id)
+        .bind(name)
+        .bind(description)
+        .bind(price)
+        .bind(duration_months)
+        .bind(features)
+        .bind(paypal_plan_id)
+        .bind(active)
+        .bind(now)
+        .fetch_one(&mut *tx)
+        .await.map_err(|e| {
+            log::error!("ERROR: {}", e);
+            e
+        })?;
+        tx.commit().await?;
+        Ok(plan)
+    }
+
+    async fn delete_subscription_plan(&self, plan_id: Uuid) -> Result<(), Error> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("DELETE FROM subscription_plans WHERE id = $1")
+            .bind(plan_id)
+            .execute(&mut *tx)
+            .await.map_err(|e| {
+                log::error!("ERROR: {}", e);
+                e
+            })?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    async fn get_subscription_plans(&self) -> Result<Vec<SubscriptionPlan>, Error> {
+        let mut tx = self.pool.begin().await?;
+        let plans = sqlx::query_as::<_, SubscriptionPlan>(
+            r#"
+            SELECT id, name, description, price, duration_months, features, paypal_plan_id, active, created_at, updated_at
+            FROM subscription_plans
+            WHERE active = true
+            ORDER BY created_at DESC
+            "#,
+        )
+        .fetch_all(&mut *tx)
+        .await.map_err(|e| {
+            log::error!("ERROR: {}", e);
+            e
+        })?;
+        tx.commit().await?;
+        Ok(plans)
+    }
+}
+
+#[async_trait]
+impl SubscriptionExt for DBClient {
+    async fn create_subscription(
+        &self,
+        user_id: Uuid,
+        paypal_id: &String, // El ID que empieza con I-XXXX
+        plan_id: &String,   // El ID del plan en tu sistema
+    ) -> Result<Subscription, Error> {
+        let mut tx = self.pool.begin().await?;
+        let id = Uuid::new_v4();
+        let now = Utc::now();
+
+        // Cancelar cualquier suscripción activa del usuario
+        sqlx::query(
+            r#"
+            UPDATE subscription
+            SET status = false, updated_at = $2
+            WHERE user_id = $1 AND status = true
+            "#,
+        )
+        .bind(user_id)
+        .bind(now)
+        .execute(&mut *tx)
+        .await.map_err(|e| {
+            log::error!("ERROR: {}", e);
+            e
+        })?;
+
+        let subscription = sqlx::query_as::<_, Subscription>(
+            r#"
+            INSERT INTO subscription (
+                id, 
+                user_id, 
+                paypal_subscription_id, 
+                status, 
+                plan_id, 
+                start_time, 
+                end_time, 
+                created_at, 
+                updated_at
+            )
+            VALUES ($1, $2, $3, true, $4, $5, NULL, $6, $7)
+            RETURNING id, user_id, paypal_subscription_id, status, plan_id, start_time, end_time, created_at, updated_at
+            "#,
+        )
+        .bind(id)        // $1
+        .bind(user_id)   // $2
+        .bind(paypal_id) // $3 (Ya no es '')
+        .bind(plan_id)   // $4
+        .bind(now)       // $5 (start_time)
+        .bind(now)       // $6 (created_at)
+        .bind(now)       // $7 (updated_at)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| {
+            log::error!("ERROR EN INSERT: {}", e);
+            e
+        })?;
+
+        tx.commit().await?;
+        Ok(subscription)
+    }
+
+    async fn get_user_subscriptions(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<Subscription>, Error> {
+        let mut tx = self.pool.begin().await?;
+        let subscriptions = sqlx::query_as::<_, Subscription>(
+            r#"
+            SELECT id, user_id, paypal_subscription_id, status, plan_id, start_time, end_time, created_at, updated_at
+            FROM subscription
+            WHERE user_id = $1
+            ORDER BY created_at DESC
+            "#,
+        )
+        .bind(user_id)
+        .fetch_all(&mut *tx)
+        .await.map_err(|e| {
+            log::error!("ERROR: {}", e);
+            e
+        })?;
+        tx.commit().await?;
+        Ok(subscriptions)
+    }
+
+    async fn cancel_subscription(
+        &self,
+        subscription_id: Uuid,
+    ) -> Result<(), Error> {
+        let mut tx = self.pool.begin().await?;
+        let now = Utc::now();
+
+        sqlx::query(
+            r#"
+            UPDATE subscription
+            SET status = false, updated_at = $2
+            WHERE id = $1
+            "#,
+        )
+        .bind(subscription_id)
+        .bind(now)
+        .execute(&mut *tx)
+        .await.map_err(|e| {
+            log::error!("ERROR: {}", e);
+            e
+        })?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    async fn update_subscription_end_time(
+        &self,
+        paypal_subscription_id: &str,
+    ) -> Result<(), Error> {
+        let mut tx = self.pool.begin().await?;
+        let now = Utc::now();
+
+        // Obtener plan_id de la suscripción
+        let plan_id: Option<String> = sqlx::query_scalar(
+            r#"
+            SELECT plan_id FROM subscription WHERE paypal_subscription_id = $1
+            "#,
+        )
+        .bind(paypal_subscription_id)
+        .fetch_optional(&mut *tx)
+        .await.map_err(|e| {
+            log::error!("ERROR: {}", e);
+            e
+        })?;
+
+        if let Some(plan_id) = plan_id {
+            // Obtener duration_months del plan
+            let duration_months: Option<i32> = sqlx::query_scalar(
+                r#"
+                SELECT duration_months FROM subscription_plans WHERE id = $1
+                "#,
+            )
+            .bind(Uuid::parse_str(&plan_id).map_err(|_| Error::RowNotFound)?)
+            .fetch_optional(&mut *tx)
+            .await.map_err(|e| {
+                log::error!("ERROR: {}", e);
+                e
+            })?;
+
+            if let Some(duration_months) = duration_months {
+                let end_time = now + chrono::Duration::days((duration_months * 30) as i64); // Aproximado
+
+                sqlx::query(
+                    r#"
+                    UPDATE subscription
+                    SET end_time = $2, updated_at = $3
+                    WHERE paypal_subscription_id = $1
+                    "#,
+                )
+                .bind(paypal_subscription_id)
+                .bind(end_time)
+                .bind(now)
+                .execute(&mut *tx)
+                .await.map_err(|e| {
+                    log::error!("ERROR: {}", e);
+                    e
+                })?;
+            }
+        }
 
         tx.commit().await?;
         Ok(())
     }
 
+    async fn update_subscription_status(
+        &self,
+        paypal_subscription_id: &str,
+        status: bool,
+    ) -> Result<(), Error> {
+        let mut tx = self.pool.begin().await?;
+        let now = Utc::now();
+
+        sqlx::query(
+            r#"
+            UPDATE subscription
+            SET status = $2, updated_at = $3
+            WHERE paypal_subscription_id = $1
+            "#,
+        )
+        .bind(paypal_subscription_id)
+        .bind(status)
+        .bind(now)
+        .execute(&mut *tx)
+        .await.map_err(|e| {
+            log::error!("ERROR: {}", e);
+            e
+        })?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    async fn expire_subscription(
+        &self,
+        paypal_subscription_id: &str,
+    ) -> Result<(), Error> {
+        let mut tx = self.pool.begin().await?;
+        let now = Utc::now();
+
+        sqlx::query(
+            r#"
+            UPDATE subscription
+            SET status = false, end_time = $2, updated_at = $2
+            WHERE paypal_subscription_id = $1 AND end_time IS NULL
+            "#,
+        )
+        .bind(paypal_subscription_id)
+        .bind(now)
+        .execute(&mut *tx)
+        .await.map_err(|e| {
+            log::error!("ERROR: {}", e);
+            e
+        })?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    async fn check_user_has_active_subscription(
+        &self,
+        user_id: Uuid,
+    ) -> Result<bool, Error> {
+        let mut tx = self.pool.begin().await?;
+        let has_active = sqlx::query_scalar::<_, bool>(
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM subscription 
+                WHERE user_id = $1 AND end_time > NOW()
+            )
+            "#,
+        )
+        .bind(user_id)
+        .fetch_one(&mut *tx)
+        .await.map_err(|e| {
+            log::error!("ERROR: {}", e);
+            e
+        })?;
+        tx.commit().await?;
+        Ok(has_active)
+    }
+}
+
+#[async_trait]
+pub trait PasswordResetTokenExt {
+    async fn create_password_reset_token(
+        &self,
+        user_id: Uuid,
+        token_hash: &str,
+        expires_at: DateTime<Utc>,
+    ) -> Result<PasswordResetToken, Error>;
+
+    async fn get_password_reset_token(
+        &self,
+        token_hash: &str,
+    ) -> Result<Option<PasswordResetToken>, Error>;
+
+    async fn mark_token_used(
+        &self,
+        token_hash: &str,
+    ) -> Result<(), Error>;
+
+    async fn invalidate_user_tokens(
+        &self,
+        user_id: Uuid,
+    ) -> Result<(), Error>;
+}
+
+#[async_trait]
+impl PasswordResetTokenExt for DBClient {
+    async fn create_password_reset_token(
+        &self,
+        user_id: Uuid,
+        token_hash: &str,
+        expires_at: DateTime<Utc>,
+    ) -> Result<PasswordResetToken, Error> {
+        let mut tx = self.pool.begin().await?;
+        let id = Uuid::new_v4();
+
+        // Obtener la versión más alta para este usuario
+        let max_version = sqlx::query_scalar!(
+            "SELECT COALESCE(MAX(version), 0) FROM password_reset_tokens WHERE user_id = $1",
+            user_id
+        )
+        .fetch_one(&mut *tx)
+        .await?
+        .unwrap_or(0);
+
+        let new_version = max_version + 1;
+
+        let token = sqlx::query_as::<_, PasswordResetToken>(
+            r#"
+            INSERT INTO password_reset_tokens (id, user_id, token_hash, version, expires_at, used, created_at)
+            VALUES ($1, $2, $3, $4, $5, false, $6)
+            RETURNING id, user_id, token_hash, version, expires_at, used, created_at
+            "#,
+        )
+        .bind(id)
+        .bind(user_id)
+        .bind(token_hash)
+        .bind(new_version)
+        .bind(expires_at)
+        .bind(Utc::now())
+        .fetch_one(&mut *tx)
+        .await.map_err(|e| {
+            log::error!("ERROR: {}", e);
+            e
+        })?;
+        tx.commit().await?;
+        Ok(token)
+    }
+
+    async fn get_password_reset_token(
+        &self,
+        token_hash: &str,
+    ) -> Result<Option<PasswordResetToken>, Error> {
+        let mut tx = self.pool.begin().await?;
+        let token = sqlx::query_as::<_, PasswordResetToken>(
+            r#"
+            SELECT id, user_id, token_hash, version, expires_at, used, created_at
+            FROM password_reset_tokens
+            WHERE token_hash = $1 AND used = false AND expires_at > $2
+            "#,
+        )
+        .bind(token_hash)
+        .bind(Utc::now())
+        .fetch_optional(&mut *tx)
+        .await.map_err(|e| {
+            log::error!("ERROR: {}", e);
+            e
+        })?;
+        tx.commit().await?;
+        Ok(token)
+    }
+
+    async fn mark_token_used(
+        &self,
+        token_hash: &str,
+    ) -> Result<(), Error> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query!(
+            "UPDATE password_reset_tokens SET used = true WHERE token_hash = $1",
+            token_hash
+        )
+        .execute(&mut *tx)
+        .await.map_err(|e| {
+            log::error!("ERROR: {}", e);
+            e
+        })?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    async fn invalidate_user_tokens(
+        &self,
+        user_id: Uuid,
+    ) -> Result<(), Error> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query!(
+            "UPDATE password_reset_tokens SET used = true WHERE user_id = $1",
+            user_id
+        )
+        .execute(&mut *tx)
+        .await.map_err(|e| {
+            log::error!("ERROR: {}", e);
+            e
+        })?;
+        tx.commit().await?;
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl NotificationExt for DBClient {
+    async fn get_user_notifications(&self, user_id: Uuid) -> Result<Vec<Notification>, Error> {
+        let mut tx = self.pool.begin().await?;
+        let notifications = sqlx::query_as::<_, Notification>(
+            r#"
+            SELECT id, user_id, title, message, sent_via, sent_at, read
+            FROM notification
+            WHERE user_id = $1
+            ORDER BY sent_at DESC
+            "#,
+        )
+        .bind(user_id)
+        .fetch_all(&mut *tx)
+        .await.map_err(|e| {
+            log::error!("ERROR: {}", e);
+            e
+        })?;
+        tx.commit().await?;
+        Ok(notifications)
+    }
+
+    async fn mark_notification_read(&self, notification_id: Uuid) -> Result<(), Error> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query!(
+            "UPDATE notification SET read = true WHERE id = $1",
+            notification_id
+        )
+        .execute(&mut *tx)
+        .await.map_err(|e| {
+            log::error!("ERROR: {}", e);
+            e
+        })?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    async fn create_notification(&self, user_id: Uuid, title: &str, message: &str, sent_via: &str) -> Result<Notification, Error> {
+        let mut tx = self.pool.begin().await?;
+        let id = Uuid::new_v4();
+        let now = Utc::now();
+
+        let notification = sqlx::query_as::<_, Notification>(
+            r#"
+            INSERT INTO notification (id, user_id, title, message, sent_via, sent_at, read)
+            VALUES ($1, $2, $3, $4, $5, $6, false)
+            RETURNING id, user_id, title, message, sent_via, sent_at, read
+            "#,
+        )
+        .bind(id)
+        .bind(user_id)
+        .bind(title)
+        .bind(message)
+        .bind(sent_via)
+        .bind(now)
+        .fetch_one(&mut *tx)
+        .await.map_err(|e| {
+            log::error!("ERROR: {}", e);
+            e
+        })?;
+        tx.commit().await?;
+        Ok(notification)
+    }
 }

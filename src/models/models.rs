@@ -173,6 +173,9 @@ pub struct Achievement {
     pub name: String,
     pub description: Option<String>,
     pub icon: Option<String>,
+    pub trigger_type: String, // 'course_completed', 'lesson_completed', etc.
+    pub trigger_value: i32, // cantidad necesaria
+    pub active: bool,
     pub created_at: DateTime<Utc>,
 }
 
@@ -202,8 +205,22 @@ pub struct Notification {
 }
 
 // ===================== //
-// SUSCRIPCIONES
+// PLANES DE SUSCRIPCIÓN
 // ===================== //
+#[allow(dead_code)]
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+pub struct SubscriptionPlan {
+    pub id: Uuid,
+    pub name: String,
+    pub description: Option<String>,
+    pub price: f64,
+    pub duration_months: i32,
+    pub features: Option<serde_json::Value>, // array de strings
+    pub paypal_plan_id: Option<String>,
+    pub active: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
 #[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Subscription {
@@ -307,12 +324,17 @@ pub struct Payment {
 //     pub created_at: DateTime<Utc>,
 // }
 
-// #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
-// pub struct CourseRating {
-//     pub id: Uuid,
-//     pub course_id: Uuid,
-//     pub user_id: Uuid,
-//     pub rating: i32,
-//     pub created_at: DateTime<Utc>,
-//     pub updated_at: DateTime<Utc>,
-// }
+// ===================== //
+// TOKENS DE RESET DE CONTRASEÑA
+// ===================== //
+#[allow(dead_code)]
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+pub struct PasswordResetToken {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub token_hash: String,
+    pub version: i32,
+    pub expires_at: DateTime<Utc>,
+    pub used: bool,
+    pub created_at: DateTime<Utc>,
+}

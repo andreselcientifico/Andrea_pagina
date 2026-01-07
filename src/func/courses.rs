@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use actix_web::{  HttpResponse, put, web::{ self, Data, Json, Path, Query, ReqData } };
+use actix_web::{  HttpResponse, web::{ self, Data, Json, Path, Query, ReqData } };
 use validator::Validate;
 use uuid::Uuid;
 use serde::Deserialize;
@@ -9,7 +9,7 @@ use serde_json::json;
 use crate::{
     AppState, 
     config::dtos::{ CreateCourseDTO, CreatedCommentDto, CreatedRatingDto, ProductDTO, UpdateCourseDTO, UpdateLessonProgressDTO }, 
-    db::db::{CourseExt, CoursePurchaseExt}, 
+    db::db::{CourseExt, CoursePurchaseExt, UserAchievementExt}, 
     errors::error::{ ErrorMessage, HttpError }, 
     func::payments::{create_product }, 
     middleware::middleware::{ JWTAuthMiddleware },
@@ -20,17 +20,32 @@ use crate::{
 pub async fn create_lesson_comment(
     path: Path<String>,
     app_state: Data<Arc<AppState>>,
-    _auth: web::ReqData<JWTAuthMiddleware>, // requiere autenticación
-    Json(body): Json<CreatedCommentDto>
+    auth: web::ReqData<JWTAuthMiddleware>,
+    Json(body): Json<CreatedCommentDto>,
 ) -> Result<HttpResponse, HttpError> {
+
+    // 1️⃣ Parsear el ID del curso
     let course_id = Uuid::parse_str(&path.into_inner())
         .map_err(|e| HttpError::bad_request(e.to_string()))?;
 
-    Ok(HttpResponse::Ok().json(
-        app_state.db_client
-        .create_lesson_comment(course_id, _auth.user.id, body.content).await
-        .map_err(|e| HttpError::server_error(e.to_string()))?
-    ))
+    // 2️⃣ Crear el comentario (esto debe COMMITTEAR internamente)
+    let comment = app_state.db_client
+        .create_lesson_comment(course_id, auth.user.id, body.content)
+        .await
+        .map_err(|e| HttpError::server_error(e.to_string()))?;
+
+    // 3️⃣ Verificar y otorgar logros por comentarios
+    // Usar EXACTAMENTE el trigger definido en la tabla achievement
+    if let Err(err) = app_state.db_client
+        .check_and_award_achievements(auth.user.id, "comments_created", None)
+        .await
+    {
+        // No rompemos la request, pero sí registramos el error
+        log::error!("Error al otorgar logros de comentarios: {:?}", err);
+    }
+
+    // 4️⃣ Responder
+    Ok(HttpResponse::Ok().json(comment))
 }
 
 pub async fn get_lesson_comments(
@@ -275,6 +290,18 @@ pub async fn delete_course(
 ) -> Result<HttpResponse, HttpError> {
     let id_str = path.into_inner();
     let course_id = Uuid::parse_str(&id_str).map_err(|e| HttpError::bad_request(e.to_string()))?;
+
+    // Obtener el curso para tener el paypal_product_id
+    let course = app_state.db_client.get_course(course_id).await.map_err(|e| {
+        HttpError::server_error(e.to_string())
+    })?.ok_or_else(|| HttpError::not_found(ErrorMessage::CourseNotFound.to_string()))?;
+
+    // Eliminar producto en PayPal si existe
+    if let Some(paypal_product_id) = &course.paypal_product_id {
+        app_state.paypal_client.delete_product(paypal_product_id)
+            .await
+            .map_err(|e| HttpError::server_error(format!("Failed to delete PayPal product: {}", e)))?;
+    }
 
     app_state.db_client.delete_course(course_id).await.map_err(|e| {
         match e {

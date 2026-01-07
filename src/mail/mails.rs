@@ -5,28 +5,48 @@ pub async fn send_verification_email(
     username: &str,
     token: &str
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let subject = "Email Verification";
+    let subject = "Verificación de Correo Electrónico";
     let base_url = "https://localhost:8000/api/auth/verify";
     let verification_link = create_verification_link(base_url, token);
-    let placeholders = vec![
-        ("{{username}}".to_string(), username.to_string()),
-        ("{{verification_link}}".to_string(), verification_link.clone())
-    ];
-    // Generamos el body HTML directamente
+
     let body_html = format!(
         r#"
         <html>
+            <head>
+                <style>
+                    body {{ font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; }}
+                    .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; text-align: center; }}
+                    .content {{ padding: 20px; }}
+                    .button {{ display: inline-block; background: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; }}
+                    .footer {{ background: #f4f4f4; padding: 10px; text-align: center; font-size: 12px; color: #666; }}
+                </style>
+            </head>
             <body>
-                <h2>Hola, {username}!</h2>
-                <p>Gracias por registrarte. Por favor verifica tu correo haciendo click en el siguiente enlace:</p>
-                <a href="{verification_link}">Verificar correo</a>
-                <p>Si no solicitaste esta acción, ignora este correo.</p>
+                <div class="header">
+                    <h1>¡Hola, {}! 👋</h1>
+                </div>
+                <div class="content">
+                    <p>Gracias por registrarte en nuestra plataforma de aprendizaje.</p>
+                    <p>Para completar tu registro, por favor verifica tu correo electrónico haciendo clic en el siguiente enlace:</p>
+                    <p style="text-align: center; margin: 30px 0;">
+                        <a href="{}" class="button">Verificar Correo Electrónico</a>
+                    </p>
+                    <p>Si no solicitaste esta acción, puedes ignorar este correo de manera segura.</p>
+                </div>
+                <div class="footer">
+                    <p>Equipo de Vallenato Academy</p>
+                </div>
             </body>
         </html>
         "#,
-        username = username,
-        verification_link = verification_link
+        username,
+        verification_link
     );
+
+    let placeholders = vec![
+        ("{{username}}".to_string(), username.to_string()),
+        ("{{verification_link}}".to_string(), verification_link)
+    ];
 
     send_email(to_email, subject, &body_html, &placeholders).await
 }
@@ -40,7 +60,7 @@ pub async fn send_welcome_email(
     to_email: &str,
     username: &str
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let subject = "Welcome to Application";
+    let subject = "¡Bienvenido a Vallenato Academy! 🎉";
     let placeholders = vec![
         ("{{username}}".to_string(), username.to_string())
     ];
@@ -48,13 +68,30 @@ pub async fn send_welcome_email(
     let body_html = format!(
         r#"
         <html>
+            <head>
+                <style>
+                    body {{ font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; }}
+                    .header {{ background: linear-gradient(135deg, #764ba2 0%, #667eea 100%); color: white; padding: 20px; text-align: center; }}
+                    .content {{ padding: 20px; }}
+                    .footer {{ background: #f4f4f4; padding: 10px; text-align: center; font-size: 12px; color: #666; }}
+                </style>
+            </head>
             <body>
-                <h2>Hola, {username}!</h2>
-                <p>Bienvenido a nuestra aplicación.</p>
+                <div class="header">
+                    <h1>¡Bienvenido, {}! 🎉</h1>
+                </div>
+                <div class="content">
+                    <p>¡Felicidades! Tu cuenta ha sido verificada exitosamente.</p>
+                    <p>Ahora puedes acceder a todos nuestros cursos de vallenato y comenzar tu viaje de aprendizaje.</p>
+                    <p>¡Esperamos que disfrutes tu experiencia de aprendizaje!</p>
+                </div>
+                <div class="footer">
+                    <p>Equipo de Vallenato Academy</p>
+                </div>
             </body>
         </html>
         "#,
-        username = username
+        username
     );
 
     send_email(to_email, subject, &body_html, &placeholders).await
@@ -66,24 +103,45 @@ pub async fn send_forgot_password_email(
     reset_link: &str,
     username: &str
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let subject = "Rest your Password";
+    let subject = "Restablecer tu Contraseña 🔒";
     let placeholders = vec![
         ("{{username}}".to_string(), username.to_string()),
-        ("{{rest_link}}".to_string(), reset_link.to_string())
+        ("{{reset_link}}".to_string(), reset_link.to_string())
     ];
 
     let body_html = format!(
         r#"
         <html>
+            <head>
+                <style>
+                    body {{ font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; }}
+                    .header {{ background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%); color: white; padding: 20px; text-align: center; }}
+                    .content {{ padding: 20px; }}
+                    .button {{ display: inline-block; background: #FF5722; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; }}
+                    .footer {{ background: #f4f4f4; padding: 10px; text-align: center; font-size: 12px; color: #666; }}
+                </style>
+            </head>
             <body>
-                <h2>Hola, {username}!</h2>
-                <p>Para restablecer tu contraseña, haz click en el siguiente enlace:</p>
-                <a href="{reset_link}">Restablecer contraseña</a>
+                <div class="header">
+                    <h1>Restablecer Contraseña 🔒</h1>
+                </div>
+                <div class="content">
+                    <p>Hola, {}.</p>
+                    <p>Hemos recibido una solicitud para restablecer tu contraseña. Si fuiste tú quien lo solicitó, haz clic en el siguiente enlace para crear una nueva contraseña:</p>
+                    <p style="text-align: center; margin: 30px 0;">
+                        <a href="{}" class="button">Restablecer Contraseña</a>
+                    </p>
+                    <p><strong>Este enlace expirará en 1 hora por seguridad.</strong></p>
+                    <p>Si no solicitaste este cambio, puedes ignorar este correo. Tu contraseña actual seguirá siendo válida.</p>
+                </div>
+                <div class="footer">
+                    <p>Equipo de Vallenato Academy</p>
+                </div>
             </body>
         </html>
         "#,
-        username = username,
-        reset_link = reset_link
+        username,
+        reset_link
     );
 
     send_email(to_email, subject, &body_html, &placeholders).await

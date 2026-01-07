@@ -8,7 +8,7 @@ use std::pin::Pin;
 
 
 use crate::{
-    AppState, auth::auth::verify_jwt, db::db::{UserExt, CoursePurchaseExt}, errors::error::{ErrorMessage, HttpError}, models::models::{User, UserRole}, utils::token::{TokenClaims, decode_token}
+    AppState, auth::auth::verify_jwt, db::db::{UserExt, CoursePurchaseExt, SubscriptionExt}, errors::error::{ErrorMessage, HttpError}, models::models::{User, UserRole}, utils::token::{TokenClaims, decode_token}
 };
 
 /// Estructura que contendrá al usuario autenticado
@@ -328,8 +328,9 @@ where
                         }
                     }
                     RequiredAccess::PremiumAccess => {
-                        let now_ts = chrono::Utc::now().timestamp();
-                        if claims.subscription_expires_at.unwrap_or(0) > now_ts {
+                        // Verificar si el usuario tiene suscripción activa (status true) o cancelada pero no expirada
+                        let has_access = db_client.check_user_has_active_subscription(claims.sub).await;
+                        if has_access.is_ok() && has_access.unwrap() {
                             allowed = true;
                         }
                     }
@@ -341,16 +342,14 @@ where
                         }
                     }
                     RequiredAccess::AnyCourseAccess => {
-                        // Verificar si el usuario tiene una suscripción activa
-                        if let Some(expires_at) = claims.subscription_expires_at {
-                            let now_ts = chrono::Utc::now().timestamp();
-                            if expires_at > now_ts {
-                                allowed = true;
-                                continue;
-                            }
+                        // Verificar si el usuario tiene suscripción activa o cancelada pero no expirada
+                        let has_subscription = db_client.check_user_has_active_subscription(claims.sub).await;
+                        if has_subscription.is_ok() && has_subscription.unwrap() {
+                            allowed = true;
+                            continue;
                         }
 
-                        // Si no tiene suscripción activa, verificar si tiene acceso a algún curso
+                        // Si no tiene suscripción, verificar si tiene acceso a algún curso comprado
                         let purchased_courses = db_client.get_user_purchased_courses(claims.sub)
                             .await;
                         if purchased_courses.is_ok() && !purchased_courses.unwrap().is_empty() {

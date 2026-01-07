@@ -3,7 +3,7 @@ use actix_web::{
 };
 use std::sync::Arc;
 use validator::Validate;
-use crate::{AppState, config::dtos::{FilterCourseDto, ForgotPasswordRequestDTO, VerifyEmailQueryDTO}, db::db::{CourseExt, UserAchievementExt, UserExt, CoursePurchaseExt}};
+use crate::db::db::{CourseExt, UserAchievementExt, UserExt, CoursePurchaseExt, PasswordResetTokenExt};
 use serde_json::{json};
 use chrono::{ Duration, Utc };
 use uuid::Uuid;
@@ -12,7 +12,8 @@ use crate::utils::password::{hash_password, verify_password};
 use crate::utils::token::create_token_rsa;
 use crate::errors::error::{ ErrorMessage, HttpError };
 use crate::middleware::middleware::JWTAuthMiddleware;  
-use crate::config::dtos::{ RegisterDTO, LoginDTO, Response , UserLoginResponseDto, ResetPasswordRequestDTO, FilterUserDto, UserProfileResponse, UserProfileData, FilterAchievementDto, UpdateUserProfileDto };
+use crate::config::dtos::{ RegisterDTO, LoginDTO, Response , UserLoginResponseDto, ResetPasswordRequestDTO, FilterUserDto, UserProfileResponse, UserProfileData, FilterAchievementDto, UpdateUserProfileDto, VerifyEmailQueryDTO, ForgotPasswordRequestDTO, FilterCourseDto };
+use crate::AppState;
 
 
 #[get("/mycourses")]
@@ -115,6 +116,10 @@ pub async fn login_user(app_state: Data<Arc<AppState>>, Json(body): Json<LoginDT
         .map_err(|_| HttpError::bad_request(ErrorMessage::WrongCredentials.to_string()))? {
         let token = create_token_rsa(user.id, user.role,None, &app_state.env.encoding_key, app_state.env.jwt_maxage)
             .map_err(|e| HttpError::server_error(e.to_string()))?;
+        // Incrementar contador de logins
+        let _ = app_state.db_client.increment_user_stat(user.id, "login_streak").await;
+        // Verificar logros de racha de logins
+        let _ = app_state.db_client.check_and_award_achievements(user.id, "login_streak", Some(1)).await;
 
         Ok(
             HttpResponse::Ok()
@@ -214,17 +219,26 @@ pub async fn forgot_password(
         .await
         .map_err(|e| HttpError::server_error(e.to_string()))?.ok_or(HttpError::bad_request("Email no encontrado.".to_string()))?;
 
-    let verification_token = Uuid::new_v4().to_string();
+    let reset_token = Uuid::new_v4().to_string();
+    let token_hash = hash_password(&reset_token)
+        .map_err(|e| HttpError::server_error(e.to_string()))?;
     let expires_at = Utc::now() + Duration::minutes(30);
 
     let user_id = Uuid::parse_str(&user.id.to_string()).unwrap();
 
+    // Invalidar tokens anteriores
     app_state.db_client
-        .add_verifed_token(user_id, &verification_token, expires_at)
+        .invalidate_user_tokens(user_id)
         .await
         .map_err(|e| HttpError::server_error(e.to_string()))?;
 
-    let reset_link = format!("http://localhost:8000/reset-password?token={}", &verification_token);
+    // Crear nuevo token
+    app_state.db_client
+        .create_password_reset_token(user_id, &token_hash, expires_at)
+        .await
+        .map_err(|e| HttpError::server_error(e.to_string()))?;
+
+    let reset_link = format!("http://localhost:8000/reset-password?token={}", &reset_token);
 
     let send_email_result = send_forgot_password_email(&user.email, &reset_link, &user.name).await;
 
@@ -244,31 +258,31 @@ pub async fn reset_password(app_state: Data<Arc<AppState>>, Json(body): Json<Res
     body.validate()
         .map_err(|e| HttpError::bad_request(e.to_string()))?;
 
-    let user = app_state.db_client
-        .get_user(None, None, Some(&body.token), None)
+    let token_hash = hash_password(&body.token)
+        .map_err(|e| HttpError::server_error(e.to_string()))?;
+
+    let reset_token = app_state.db_client
+        .get_password_reset_token(&token_hash)
         .await
-        .map_err(|e| HttpError::server_error(e.to_string()))?.ok_or(HttpError::bad_request("Token inválido.".to_string()))?;
+        .map_err(|e| HttpError::server_error(e.to_string()))?.ok_or(HttpError::bad_request("Token inválido o expirado.".to_string()))?;
 
-    if let Some(expires_at) = user.token_expiry {
-        if Utc::now() > expires_at {
-            return Err(HttpError::bad_request("El token de restablecimiento de contraseña ha expirado.".to_string()));
-        }
-    } else {
-        return Err(HttpError::bad_request("Token inválido.".to_string()));
-    }
+    let user_id = reset_token.user_id;
 
-    let user_id = Uuid::parse_str(&user.id.to_string()).unwrap();
+    let _ = app_state.db_client
+        .get_user(Some(user_id), None, None, None)
+        .await
+        .map_err(|e| HttpError::server_error(e.to_string()))?.ok_or(HttpError::bad_request("Usuario no encontrado.".to_string()))?;
 
     let new_password_hash = hash_password(&body.new_password)
         .map_err(|e| HttpError::server_error(e.to_string()))?;
 
     app_state.db_client
-        .update_user_password(user_id.clone(), new_password_hash)
+        .update_user_password(user_id, new_password_hash)
         .await
         .map_err(|e| HttpError::server_error(e.to_string()))?;
 
     app_state.db_client
-        .verifed_token(&body.token)
+        .mark_token_used(&token_hash)
         .await
         .map_err(|e| HttpError::server_error(e.to_string()))?;
 
@@ -307,8 +321,8 @@ pub async fn get_user_profile(req: HttpRequest, app_state: Data<Arc<AppState>>) 
                 data: UserProfileData {
                     user: FilterUserDto::filter_user(&user_data.user),
                     courses: FilterCourseDto::filter_courses(&courses),
-                    achievements: FilterAchievementDto::filter_achievements(&achievements),
-                },
+                    achievements,
+                }
             };
 
             Ok(HttpResponse::Ok().json(response))

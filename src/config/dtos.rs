@@ -468,7 +468,7 @@ pub struct UserProfileResponse {
 pub struct UserProfileData {
     pub user: FilterUserDto,
     pub courses: Vec<FilterCourseDto>,
-    pub achievements: Vec<FilterAchievementDto>,
+    pub achievements: Vec<UserAchievementDto>,
 }
 
 #[allow(dead_code)]
@@ -534,6 +534,21 @@ impl FilterCourseDto {
     }
 
 }
+
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+pub struct UserAchievementDto {
+    pub id: Uuid,
+    pub name: String,
+    pub description: Option<String>,
+    pub icon: Option<String>,
+    pub trigger_type: String,
+    pub trigger_value: i32,
+    pub active: bool,
+    pub earned: bool,
+    pub earned_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+}
+
 
 #[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize)]

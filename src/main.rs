@@ -9,6 +9,7 @@ mod utils;
 mod middleware;
 mod mail;
 mod routes;
+mod services;
 
 use actix_web::Responder;
 use actix_web::web::{ scope };
@@ -18,6 +19,7 @@ use chrono::{ DateTime, Utc };
 use openssl::ssl::{ SslAcceptor, SslFiletype, SslMethod };
 use config::config::Config;
 use reqwest::Client;
+use services::paypal_client::PayPalClient;
 use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -38,6 +40,7 @@ pub struct AppState {
     pub client: Client,
     pub token_cache: Arc<RwLock<Option<CachedToken>>>,
     pub db_client: DBClient,
+    pub paypal_client: PayPalClient,
 }
 
 #[derive(Clone, Debug)]
@@ -75,9 +78,7 @@ pub async fn ping(Json(json): Json<Value>) -> impl Responder {
 async fn main() -> std::io::Result<()> {
     dotenvy::dotenv().expect("No se pudo cargar el archivo .env");
     let current_dir = std::env::current_dir().expect("No se pudo obtener el directorio actual");
-    env_logger::Builder
-        ::from_env(Env::default().default_filter_or("actix_web=debug,actix_server=info"))
-        .init();
+    env_logger::Builder::from_env(Env::default().default_filter_or("debug, actix_server=info")).init();
 
     let key_path = current_dir.join("key.pem");
     let cert_path = current_dir.join("cert.pem");
@@ -87,7 +88,8 @@ async fn main() -> std::io::Result<()> {
     builder.set_certificate_chain_file(cert_path).expect("No se pudo leer cert.pem");
 
     // Crear conexión a Postgres
-    let pool = match PgPoolOptions::new().connect(&Config::init().database_url).await {
+    let config = Config::init();
+    let pool = match PgPoolOptions::new().connect(&config.database_url).await {
         Ok(pool) => { pool }
         Err(err) => {
             return Err(
@@ -99,17 +101,22 @@ async fn main() -> std::io::Result<()> {
         }
     };
     let db: DBClient = DBClient::new(pool);
+    let paypal_client = PayPalClient::new(
+        config.paypal_client_id.clone(),
+        config.paypal_secret.clone(),
+        config.paypal_api_mode.contains("sandbox")
+    ).await;
 
     let state = AppState {
-        env: Config::init(),
+        env: config,
         client: Client::new(),
         token_cache: Arc::new(RwLock::new(None)),
         db_client: db.clone(),
+        paypal_client,
     };
     let app_state = Arc::new(state.clone());
     HttpServer::new(move || {
         App::new()
-            .wrap(Logger::default())
             .app_data(Data::new(app_state.clone()))
             // .wrap(Compress::default())
             .wrap(
@@ -118,6 +125,10 @@ async fn main() -> std::io::Result<()> {
                     .allowed_origin_fn(|origin, _req_head| {
                         let origin = origin.to_str().unwrap_or("");
                         origin.as_bytes().ends_with(b"8080")
+                    })
+                    .allowed_origin_fn(|origin, _req_head| {
+                        let origin = origin.to_str().unwrap_or("");
+                        origin.as_bytes().ends_with(b"4173")
                     })
                     .allowed_origin_fn(|origin, _req_head| {
                         let origin = origin.to_str().unwrap_or("");

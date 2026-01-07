@@ -1,13 +1,14 @@
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct PayPalClient {
     pub client: Client,
     pub client_id: String,
     pub secret: String,
     pub base_url: String,
-    pub access_token: tokio::sync::RwLock<String>,
+    pub access_token: Arc<tokio::sync::RwLock<String>>,
 }
 
 impl PayPalClient {
@@ -25,7 +26,7 @@ impl PayPalClient {
             client_id,
             secret,
             base_url,
-            access_token: tokio::sync::RwLock::new(String::new()),
+            access_token: Arc::new(tokio::sync::RwLock::new(String::new())),
         };
 
         paypal.refresh_access_token().await.unwrap();
@@ -53,9 +54,7 @@ impl PayPalClient {
 
     /// Headers con token
     pub async fn auth_header(&self) -> (String, String) {
-        |this: &Self| async move {
-            ("Authorization".into(), format!("Bearer {}", this.access_token.read().await))
-        }
+        ("Authorization".into(), format!("Bearer {}", self.access_token.read().await))
     }
 
     // -----------------------------------------------------------
@@ -77,7 +76,7 @@ impl PayPalClient {
             id: String,
         }
 
-        let (h, v) = self.auth_header()(&self).await;
+        let (h, v) = self.auth_header().await;
 
         let res = self.client.post(format!("{}/v1/catalogs/products", self.base_url))
             .header(h, v)
@@ -122,7 +121,7 @@ impl PayPalClient {
             id: String,
         }
 
-        let (h, v) = self.auth_header()(&self).await;
+        let (h, v) = self.auth_header().await;
 
         let body = OrderReq {
             intent: "CAPTURE",
@@ -155,7 +154,7 @@ impl PayPalClient {
             id: String,
         }
 
-        let (h, v) = self.auth_header()(&self).await;
+        let (h, v) = self.auth_header().await;
 
         let res = self.client.post(format!(
             "{}/v2/checkout/orders/{}/capture",
@@ -184,7 +183,7 @@ impl PayPalClient {
             id: String,
         }
 
-        let (h, v) = self.auth_header()(&self).await;
+        let (h, v) = self.auth_header().await;
 
         let res = self.client.post(format!("{}/v1/billing/subscriptions", self.base_url))
             .header(h, v)
@@ -193,5 +192,142 @@ impl PayPalClient {
 
         let body: SubRes = res.json().await?;
         Ok(body.id)
+    }
+    pub async fn create_plan(&self, product_id: &str, name: &str, description: &str, price: f64, interval: &str, interval_count: i32)
+        -> Result<String, reqwest::Error>
+    {
+        #[derive(Serialize)]
+        struct PricingScheme {
+            fixed_price: Amount,
+        }
+
+        #[derive(Serialize)]
+        struct Frequency {
+            interval_unit: String,
+            interval_count: i32,
+        }
+
+        #[derive(Serialize)]
+        struct BillingCycle {
+            frequency: Frequency,
+            tenure_type: String,
+            sequence: i32,
+            total_cycles: i32,
+            pricing_scheme: PricingScheme,
+        }
+
+        #[derive(Serialize)]
+        struct Amount {
+            currency_code: String,
+            value: String,
+        }
+
+        #[derive(Serialize)]
+        struct PlanReq<'a> {
+            product_id: &'a str,
+            name: &'a str,
+            description: &'a str,
+            status: &'a str,
+            billing_cycles: Vec<BillingCycle>,
+            payment_preferences: PaymentPreferences,
+        }
+
+        #[derive(Serialize)]
+        struct PaymentPreferences {
+            auto_bill_outstanding: bool,
+            setup_fee_failure_action: String,
+            payment_failure_threshold: i32,
+        }
+
+        #[derive(Deserialize)]
+        struct PlanRes {
+            id: String,
+        }
+
+        let (h, v) = self.auth_header().await;
+
+        let body = PlanReq {
+            product_id,
+            name,
+            description,
+            status: "ACTIVE",
+            billing_cycles: vec![BillingCycle {
+                frequency: Frequency {
+                    interval_unit: interval.to_uppercase(),
+                    interval_count,
+                },
+                tenure_type: "REGULAR".to_string(),
+                sequence: 1,
+                total_cycles: 0, // 0 significa indefinido
+                pricing_scheme: PricingScheme {
+                    fixed_price: Amount {
+                        currency_code: "USD".to_string(),
+                        value: format!("{:.2}", price),
+                    },
+                },
+            }],
+            payment_preferences: PaymentPreferences {
+                auto_bill_outstanding: true,
+                setup_fee_failure_action: "CANCEL".to_string(),
+                payment_failure_threshold: 3,
+            },
+        };
+
+        let res = self.client.post(format!("{}/v1/billing/plans", self.base_url))
+            .header(h, v)
+            .json(&body)
+            .send().await?;
+
+        let body: PlanRes = res.json().await?;
+        Ok(body.id)
+    }
+
+    // -----------------------------------------------------------
+    // 6. Eliminar PRODUCTO
+    // -----------------------------------------------------------
+    pub async fn delete_product(&self, product_id: &str)
+        -> Result<(), reqwest::Error>
+    {
+        let (h, v) = self.auth_header().await;
+
+        let _res = self.client.delete(format!("{}/v1/catalogs/products/{}", self.base_url, product_id))
+            .header(h, v)
+            .send().await?;
+
+        Ok(())
+    }
+
+    // -----------------------------------------------------------
+    // 7. Eliminar PLAN
+    // -----------------------------------------------------------
+    pub async fn delete_plan(&self, plan_id: &str)
+        -> Result<(), reqwest::Error>
+    {
+        let (h, v) = self.auth_header().await;
+
+        let _res = self.client.delete(format!("{}/v1/billing/plans/{}", self.base_url, plan_id))
+            .header(h, v)
+            .send().await?;
+
+        Ok(())
+    }
+
+    // -----------------------------------------------------------
+    // 8. Cancelar SUSCRIPCIÓN
+    // -----------------------------------------------------------
+    pub async fn cancel_subscription(&self, subscription_id: &str)
+        -> Result<(), reqwest::Error>
+    {
+        let (h, v) = self.auth_header().await;
+
+        let _res = self.client.post(format!("{}/v1/billing/subscriptions/{}/cancel", self.base_url, subscription_id))
+            .header(h, v)
+            .header("Content-Type", "application/json")
+            .json(&serde_json::json!({
+                "reason": "User requested cancellation"
+            }))
+            .send().await?;
+
+        Ok(())
     }
 }

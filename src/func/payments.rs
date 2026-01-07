@@ -1,6 +1,6 @@
 use std::{sync::Arc};
 use actix_web::{
-    HttpRequest, HttpResponse, post, web::{self, Data, Path, ReqData}
+    HttpRequest, HttpResponse, post, get, web::{self, Data, Path, ReqData}
 };
 use serde_json::{Value, json};
 use chrono::{Duration, Utc};
@@ -10,9 +10,9 @@ use crate::{
     AppState, 
     CachedToken, 
     config::dtos::ProductDTO, 
-    db::db::{CourseExt, CoursePurchaseExt}, 
+    db::db::{CourseExt, CoursePurchaseExt, SubscriptionExt}, 
     errors::error::HttpError, 
-    middleware::middleware::{ JWTAuthMiddleware}
+    middleware::middleware::JWTAuthMiddleware
 };
 
 // ===================== //
@@ -209,44 +209,84 @@ pub async fn paypal_webhook(
 
         /* --- SUSCRIPCIONES --- */
         Some("BILLING.SUBSCRIPTION.CREATED") => {
-            // Suscripción creada
-             Ok(HttpResponse::Ok().finish())
+            // Suscripción creada - no hacer nada especial, se maneja en verify_subscription
+            log::info!("Subscription created event received.");
+            Ok(HttpResponse::Ok().finish())
         }
         Some("BILLING.SUBSCRIPTION.ACTIVATED") => {
-            // Activar acceso del plan
-             Ok(HttpResponse::Ok().finish())
+            // Activar y setear end_time
+            if let Some(sub_id) = event["resource"]["id"].as_str() {
+                app_state.db_client.update_subscription_end_time(sub_id).await
+                    .map_err(|e| HttpError::server_error(format!("Error updating subscription: {}", e)))?;
+                app_state.db_client.update_subscription_status(sub_id, true).await
+                    .map_err(|e| HttpError::server_error(format!("Error activating subscription: {}", e)))?;
+            }
+            log::info!("Subscription activated event received.");
+            Ok(HttpResponse::Ok().finish())
         }
         Some("BILLING.SUBSCRIPTION.UPDATED") => {
-            // Actualizar plan/estado
-             Ok(HttpResponse::Ok().finish())
+            // Actualizar plan/estado - por ahora, solo log
+            log::info!("Subscription updated event received.");
+            Ok(HttpResponse::Ok().finish())
         }
         Some("BILLING.SUBSCRIPTION.CANCELLED") => {
-            // Marcar para terminar acceso al final del ciclo
-             Ok(HttpResponse::Ok().finish())
+            // Marcar como cancelada
+            if let Some(sub_id) = event["resource"]["id"].as_str() {
+                app_state.db_client.update_subscription_status(sub_id, false).await
+                    .map_err(|e| HttpError::server_error(format!("Error cancelling subscription: {}", e)))?;
+            }
+            log::info!("Subscription cancelled event received.");
+            Ok(HttpResponse::Ok().finish())
         }
         Some("BILLING.SUBSCRIPTION.EXPIRED") => {
-            // Fin de suscripción ya efectiva
-             Ok(HttpResponse::Ok().finish())
+            // Fin de suscripción
+            if let Some(sub_id) = event["resource"]["id"].as_str() {
+                app_state.db_client.expire_subscription(sub_id).await
+                    .map_err(|e| HttpError::server_error(format!("Error expiring subscription: {}", e)))?;
+            }
+            log::info!("Subscription expired event received.");
+            Ok(HttpResponse::Ok().finish())
         }
         Some("BILLING.SUBSCRIPTION.SUSPENDED") => {
-            // Suspensión por pagos fallidos
-             Ok(HttpResponse::Ok().finish())
+            // Suspensión por pagos fallidos - desactivar
+            if let Some(sub_id) = event["resource"]["id"].as_str() {
+                app_state.db_client.update_subscription_status(sub_id, false).await
+                    .map_err(|e| HttpError::server_error(format!("Error suspending subscription: {}", e)))?;
+            }
+            log::info!("Subscription suspended event received.");
+            Ok(HttpResponse::Ok().finish())
         }
         Some("BILLING.SUBSCRIPTION.PAYMENT.FAILED") => {
-            // Un pago recurrente falló
-             Ok(HttpResponse::Ok().finish())
+            // Pago fallido - log
+            log::info!("Subscription payment failed event received.");
+            Ok(HttpResponse::Ok().finish())
         }
         Some("PAYMENT.SALE.COMPLETED") => {
-            // Pago de ciclo recurrente exitoso
-             Ok(HttpResponse::Ok().finish())
+            // Pago de ciclo recurrente exitoso - extender end_time
+            if let Some(sub_id) = event["resource"]["billing_agreement_id"].as_str() {
+                app_state.db_client.update_subscription_end_time(sub_id).await
+                    .map_err(|e| HttpError::server_error(format!("Error extending subscription: {}", e)))?;
+            }
+            log::info!("Payment sale completed event received.");
+            Ok(HttpResponse::Ok().finish())
         }
         Some("PAYMENT.SALE.REFUNDED") => {
-            // Reembolso de pago recurrente
-             Ok(HttpResponse::Ok().finish())
+            // Reembolso - quizás cancelar
+            if let Some(sub_id) = event["resource"]["billing_agreement_id"].as_str() {
+                app_state.db_client.update_subscription_status(sub_id, false).await
+                    .map_err(|e| HttpError::server_error(format!("Error refunding subscription: {}", e)))?;
+            }
+            log::info!("Payment sale refunded event received.");
+            Ok(HttpResponse::Ok().finish())
         }
         Some("PAYMENT.SALE.REVERSED") => {
-            // Reversión de pago recurrente
-             Ok(HttpResponse::Ok().finish())
+            // Reversión - cancelar
+            if let Some(sub_id) = event["resource"]["billing_agreement_id"].as_str() {
+                app_state.db_client.update_subscription_status(sub_id, false).await
+                    .map_err(|e| HttpError::server_error(format!("Error reversing subscription: {}", e)))?;
+            }
+            log::info!("Payment sale reversed event received.");
+            Ok(HttpResponse::Ok().finish())
         }
 
         /* --- OTROS EVENTOS GENERALES --- */
@@ -266,7 +306,10 @@ pub async fn paypal_webhook(
         //     // Evento no manejado explícitamente
         //      Ok(HttpResponse::Ok().finish())
         // }
-        _ => Err(HttpError::bad_request("Unsupported event type"))
+        _ => {
+            log::info!("Unsupported event type: {:?}", event["event_type"]);
+            Ok(HttpResponse::Ok().finish())
+        }
     }
 }
 
@@ -530,5 +573,71 @@ async fn capture_order(
         "status": status,
         "order_id": order_id,
         "data": data  // Opcional: devolver toda la respuesta de PayPal si es necesario
+    }))
+}
+
+#[post("/paypal/subscription/{subscription_id}")]
+async fn verify_subscription(
+    path: Path<String>,
+    app_state: Data<Arc<AppState>>,
+    user: ReqData<JWTAuthMiddleware>,
+) -> HttpResponse {
+    let subscription_id = path.into_inner();
+    let user_id = user.user.id;
+
+    let access_token = get_paypal_token(&app_state).await;
+
+    let res = app_state.client
+        .get(format!(
+            "{}/v1/billing/subscriptions/{}",
+            app_state.env.paypal_api_mode,
+            subscription_id
+        ))
+        .bearer_auth(&access_token)
+        .send()
+        .await;
+
+    let res = match res {
+        Ok(r) => r,
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(json!({
+                "error": format!("Error consultando PayPal: {}", e)
+            }));
+        }
+    };
+
+    if !res.status().is_success() {
+        return HttpResponse::BadRequest().json(json!({
+            "error": "PayPal rechazó la suscripción"
+        }));
+    }
+
+    let data: serde_json::Value = res.json().await.unwrap();
+
+    let status = data["status"].as_str().unwrap_or("");
+
+    if status != "ACTIVE" {
+        return HttpResponse::BadRequest().json(json!({
+            "error": "La suscripción no está activa"
+        }));
+    }
+    let paypal_plan_id = data["plan_id"].as_str().unwrap_or("");
+
+    // Guardar suscripción en DB
+    app_state.db_client
+        .create_subscription(
+            user_id,
+            &subscription_id,
+            &paypal_plan_id.to_string(),
+        )
+        .await
+        .map_err(|e| {
+            log::error!("{}", e);
+        })
+        .ok();
+
+    HttpResponse::Ok().json(json!({
+        "status": "ACTIVE",
+        "subscription_id": subscription_id
     }))
 }
