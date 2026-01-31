@@ -7,6 +7,7 @@ use chrono::{DateTime, Utc, NaiveDate};
 // ===================== //
 #[derive(Debug, Serialize, Deserialize, Clone, sqlx::Type, Copy, PartialEq)]
 #[sqlx(type_name = "user_role", rename_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
 pub enum UserRole {
     Admin,
     User,
@@ -42,6 +43,9 @@ pub struct User {
     pub token_expiry: Option<DateTime<Utc>>,
     #[serde(rename = "profileImageUrl", skip_serializing_if = "Option::is_none")]
     pub profile_image_url: Option<String>,
+    pub email_notifications: bool,
+    pub course_reminders: bool,
+    pub new_content: bool,
     #[serde(rename = "createdAt")]
     pub created_at
 : Option<DateTime<Utc>>,
@@ -336,5 +340,67 @@ pub struct PasswordResetToken {
     pub version: i32,
     pub expires_at: DateTime<Utc>,
     pub used: bool,
+    pub created_at: DateTime<Utc>,
+}
+
+// ===================== //
+// QUIZZES & CERTIFICATES
+// ===================== //
+
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+pub struct Quiz {
+    pub id: Uuid,
+    pub lesson_id: Uuid,
+    pub title: String,
+    pub description: Option<String>,
+    pub pass_percentage: f64,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+pub struct Question {
+    pub id: Uuid,
+    pub quiz_id: Uuid,
+    pub question: String,
+    pub description: Option<String>,
+    pub explanation: Option<String>,
+    pub order: i32,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+pub struct QuestionOption {
+    pub id: Uuid,
+    pub question_id: Uuid,
+    pub text: String,
+    pub is_correct: bool,
+    pub order: i32,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+pub struct QuizAttempt {
+    pub id: Uuid,
+    pub quiz_id: Uuid,
+    pub user_id: Uuid,
+    pub score: i32,
+    pub total_score: i32,
+    pub percentage: f64,
+    pub passed: bool,
+    pub submitted_at: DateTime<Utc>,
+    pub answers: Option<serde_json::Value>, 
+}
+
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+pub struct Certificate {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub course_id: Uuid,
+    pub certificate_number: String,
+    pub issue_date: DateTime<Utc>,
+    pub completion_percentage: f64,
     pub created_at: DateTime<Utc>,
 }

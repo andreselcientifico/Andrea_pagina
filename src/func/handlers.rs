@@ -3,7 +3,7 @@ use actix_web::{
 };
 use std::sync::Arc;
 use validator::Validate;
-use crate::db::db::{CourseExt, UserAchievementExt, UserExt, CoursePurchaseExt, PasswordResetTokenExt};
+use crate::db::db::{UserAchievementExt, UserExt, CoursePurchaseExt, PasswordResetTokenExt};
 use serde_json::{json};
 use chrono::{ Duration, Utc };
 use uuid::Uuid;
@@ -12,7 +12,7 @@ use crate::utils::password::{hash_password, verify_password};
 use crate::utils::token::create_token_rsa;
 use crate::errors::error::{ ErrorMessage, HttpError };
 use crate::middleware::middleware::JWTAuthMiddleware;  
-use crate::config::dtos::{ RegisterDTO, LoginDTO, Response , UserLoginResponseDto, ResetPasswordRequestDTO, FilterUserDto, UserProfileResponse, UserProfileData, FilterAchievementDto, UpdateUserProfileDto, VerifyEmailQueryDTO, ForgotPasswordRequestDTO, FilterCourseDto };
+use crate::config::dtos::{ RegisterDTO, LoginDTO, Response , UserLoginResponseDto, ResetPasswordRequestDTO, FilterUserDto, UserProfileResponse, UpdateUserProfileDto, VerifyEmailQueryDTO, ForgotPasswordRequestDTO};
 use crate::AppState;
 
 
@@ -301,16 +301,9 @@ pub async fn get_user_profile(req: HttpRequest, app_state: Data<Arc<AppState>>) 
         Some(user_data) => {
             let user_id = user_data.user.id;
 
-            // Obtener cursos y logros desde el cliente de base de datos en AppState
-            let courses = app_state.db_client
-                .get_user_courses(user_id)
-                .await
-                .map_err(|e| {
-                    HttpError::server_error(e.to_string())
-                })?;
-
-            let achievements = app_state.db_client
-                .get_user_achievements(user_id)
+            // Utilizar la consulta unificada
+            let profile_data = app_state.db_client
+                .get_user_complete_profile(user_id)
                 .await
                 .map_err(|e| {
                     HttpError::server_error(e.to_string())
@@ -318,11 +311,7 @@ pub async fn get_user_profile(req: HttpRequest, app_state: Data<Arc<AppState>>) 
 
             let response = UserProfileResponse {
                 status: "success".into(),
-                data: UserProfileData {
-                    user: FilterUserDto::filter_user(&user_data.user),
-                    courses: FilterCourseDto::filter_courses(&courses),
-                    achievements,
-                }
+                data: profile_data
             };
 
             Ok(HttpResponse::Ok().json(response))

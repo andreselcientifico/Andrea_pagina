@@ -5,3 +5,5 @@ pub mod payments;
 pub mod achievements;
 pub mod subscriptions;
 pub mod notifications;
+pub mod quizzes;
+pub mod certificates;

@@ -1,6 +1,6 @@
 use std::{rc::Rc, sync::Arc, future::Future};
 use actix_web::{
-    Error, HttpMessage, web::Data, HttpResponse, body::{EitherBody}, dev::{Service, ServiceRequest, ServiceResponse, Transform, forward_ready}, http::header
+    Error, HttpMessage, web::Data, HttpResponse, body::{EitherBody}, dev::{Service, ServiceRequest, ServiceResponse, Transform, forward_ready}, http::{header, Method}
 };
 use futures::{FutureExt, future::{LocalBoxFuture, Ready, ready}};
 use uuid::Uuid;
@@ -34,7 +34,7 @@ where
     S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
     B: 'static,
 {
-    type Response = ServiceResponse<B>;
+    type Response = ServiceResponse<EitherBody<B>>;
     type Error = Error;
     type InitError = ();
     type Transform = AuthMiddleware<S>;
@@ -58,7 +58,7 @@ where
     S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
     B: 'static,
 {
-    type Response = ServiceResponse<B>;
+    type Response = ServiceResponse<EitherBody<B>>;
     type Error = Error;
     type Future = LocalBoxFuture<'static, Result<Self::Response, Self::Error>>;
 
@@ -69,7 +69,20 @@ where
         let srv = self.service.clone();
 
         Box::pin(async move {
-            // Buscar token desde cookie o header Authorization
+            
+            // ===============================
+            // 1. PERMITIR OPTIONS (CRÍTICO)
+            // ===============================
+            if req.method() == Method::OPTIONS {
+                return Ok(
+                    req.into_response(
+                        HttpResponse::Ok().finish().map_into_right_body()
+                    )
+                );
+            }
+            // ============================
+            // 2. EXTRAER TOKEN
+            // ============================
             let token = req.cookie("token")
                 .map(|c| c.value().to_string())
                 .or_else(|| {
@@ -88,7 +101,9 @@ where
                 }
             };
 
-            // Verificar JWT
+            // ============================
+            // 3. VALIDAR JWT
+            // ============================
             let user_id = match verify_jwt(&token) {
                 Some(id) => id,
                 None => {
@@ -122,8 +137,10 @@ where
             // Guardar usuario autenticado en la request
             req.extensions_mut().insert(JWTAuthMiddleware { user });
 
-            // Continuar con la request
-            Ok(srv.call(req).await?)
+             // ============================
+            // 4. CONTINUAR PIPELINE
+            // ============================
+            Ok(srv.call(req).await?.map_into_left_body())
         })
     }
 }

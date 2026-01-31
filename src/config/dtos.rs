@@ -4,7 +4,7 @@ use serde::{ Deserialize, Serialize };
 use uuid::Uuid;
 use validator::Validate; 
 
-use crate::models::models::{ Achievement, Course, User, UserRole};
+use crate::models::models::{ Achievement, Certificate, Course, Subscription, User, UserRole};
 
 #[derive(Validate, Debug, Default, Clone, Serialize, Deserialize)]
 pub struct RegisterDTO {
@@ -60,9 +60,7 @@ pub struct FilterUserDto {
     pub birth_date: Option<NaiveDate>, 
     pub role: Option<UserRole>,
     pub verified: Option<bool>,
-    #[serde(rename = "createdAt")]
     pub created_at: Option<DateTime<Utc>>,
-    #[serde(rename = "updatedAt")]
     pub updated_at: Option<DateTime<Utc>>,
 }
 
@@ -467,8 +465,10 @@ pub struct UserProfileResponse {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UserProfileData {
     pub user: FilterUserDto,
-    pub courses: Vec<FilterCourseDto>,
+    pub courses: Vec<UserCourseDto>,
     pub achievements: Vec<UserAchievementDto>,
+    pub subscriptions: Vec<Subscription>,
+    pub certificates: Vec<Certificate>,
 }
 
 #[allow(dead_code)]
@@ -499,9 +499,7 @@ pub struct FilterCourseDto {
     pub rating: i32,
     pub features: Option<Vec<String>>,
     pub paypal_product_id: Option<String>,
-    #[serde(rename = "createdAt")]
     pub created_at: Option<DateTime<Utc>>,
-    #[serde(rename = "updatedAt")]
     pub updated_at: Option<DateTime<Utc>>,
 }
 
@@ -605,7 +603,7 @@ pub struct CourseRatingDto {
     pub user_rating: Option<i32>,
 }
 
-#[derive(Debug, Serialize, sqlx::FromRow)]
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct UserCourseDto {
     pub id: Uuid,
     pub title: String,                       
@@ -622,4 +620,128 @@ pub struct UserCourseDto {
     pub paypal_product_id: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+// ===================== //
+// QUIZ DTOs
+// ===================== //
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct QuizResponseDto {
+    pub id: Option<String>,
+    pub lesson_id: Option<String>,
+    pub title: String,
+    pub description: Option<String>,
+    pub pass_percentage: Option<f64>,
+    pub total_questions: i64,
+    pub order: i32, // Note: Quiz doesn't have order in DB, usually follows Lesson order.
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct OptionDto {
+    pub id: Option<String>,
+    pub text: String,
+    pub order: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct QuestionDto {
+    pub id: String,
+    pub question: String,
+    pub description: Option<String>,
+    pub options: Vec<OptionDto>,
+    // Only verify/correct_option if needed generally not sent to frontend for taking quiz
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correct_option_id: Option<String>, 
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub explanation: Option<String>,
+    pub order: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Validate)]
+pub struct SubmitAnswerDto {
+    pub question_id: String,
+    pub selected_option_id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Validate)]
+pub struct SubmitQuizDto {
+    pub answers: Vec<SubmitAnswerDto>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct QuizResultDetailDto {
+    pub question_id: String,
+    pub question: String,
+    pub selected_option_id: String,
+    pub correct_option_id: String,
+    pub is_correct: bool,
+    pub explanation: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct QuizSubmissionResponseDto {
+    pub submission_id: String,
+    pub quiz_id: String,
+    pub score: i32,
+    pub total_score: i32,
+    pub percentage: f64,
+    pub passed: bool,
+    pub submitted_at: DateTime<Utc>,
+    pub results: Vec<QuizResultDetailDto>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub certificate: Option<CertificateDto>, // Optional certificate if generated after submission
+}
+
+// DTOs para administración de Quizzes
+#[derive(Debug, Serialize, Deserialize, Validate)]
+pub struct CreateOptionDto {
+    pub text: String,
+    pub is_correct: bool,
+    pub order: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Validate)]
+pub struct CreateQuestionDto {
+    pub question: String,
+    pub description: Option<String>,
+    pub explanation: Option<String>,
+    pub order: i32,
+    pub options: Vec<CreateOptionDto>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Validate)]
+pub struct CreateQuizDto {
+    pub lesson_id: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub pass_percentage: Option<f64>,
+    pub questions: Vec<CreateQuestionDto>,
+}
+
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+pub struct QuizAttemptDto {
+    pub id: Uuid,
+    pub quiz_id: Uuid,
+    pub user_id: Uuid,
+    pub score: i32,
+    pub percentage: f64,
+    pub passed: bool,
+    pub submitted_at: DateTime<Utc>,
+}
+
+// ===================== //
+// CERTIFICATE DTOs
+// ===================== //
+
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+pub struct CertificateDto {
+    pub id: Uuid,
+    pub course_id: Uuid,
+    pub user_id: Uuid,
+    pub user_name: String,
+    pub course_title: String,
+    pub issue_date: DateTime<Utc>,
+    pub completion_percentage: f64,
+    pub certificate_number: String,
 }

@@ -136,23 +136,6 @@ pub async fn get_courses(
     Ok(HttpResponse::Ok().json(courses))
 }
 
-pub async fn get_course(
-    path: Path<String>,
-    app_state: Data<Arc<AppState>>
-) -> Result<HttpResponse, HttpError> {
-    let id_str = path.into_inner();
-    let course_id = Uuid::parse_str(&id_str).map_err(|e| HttpError::bad_request(e.to_string()))?;
-
-    let course = app_state.db_client
-        .get_course(course_id).await
-        .map_err(|e| HttpError::server_error(e.to_string()))?;
-
-    match course {
-        Some(c) => Ok(HttpResponse::Ok().json(c)),
-        None => Err(HttpError::not_found(ErrorMessage::CourseNotFound.to_string())),
-    }
-}
-
 
 pub async fn get_courses_with_modules(
     // Query(q): Query<ListQuery>,

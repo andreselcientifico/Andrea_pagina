@@ -6,7 +6,22 @@ use chrono::{DateTime, Utc};
 use sqlx::{Pool, Postgres, query_scalar, query_as, query, Error, Row};
 use uuid::Uuid;
 
-use crate::{config::dtos::{CommentLessonDto, CourseRatingDto, CourseWithModulesDto, CreateCourseDTO, CreateLessonDTO, CreateModuleDTO, LessonDto, ModuleWithLessonsDto, UpdateCourseDTO, UserAchievementDto, UserCourseDto},  models::models::{Achievement, Course, CourseProgress, Lesson, Module, Notification, PasswordResetToken, Payment, Subscription, SubscriptionPlan, User, UserAchievement, UserCourse, UserRole}};
+use crate::{
+    config::dtos::{
+        CommentLessonDto, CourseRatingDto, CourseWithModulesDto, CreateCourseDTO, 
+        CreateLessonDTO, CreateModuleDTO, LessonDto, ModuleWithLessonsDto, 
+        UpdateCourseDTO, UserAchievementDto, UserCourseDto, 
+        QuizResponseDto, QuestionDto, OptionDto, QuizAttemptDto, CreateQuizDto,
+        CertificateDto,
+        UserProfileData,
+    },
+    models::models::{
+        Achievement, Course, CourseProgress, Lesson, Module, Notification, 
+        PasswordResetToken, Payment, Subscription, SubscriptionPlan, User, 
+        UserAchievement, UserCourse, UserRole, 
+        Question, QuizAttempt, Certificate
+    }
+};
 
 #[derive(Debug, Clone)]
 pub struct DBClient {
@@ -100,6 +115,11 @@ pub trait UserExt {
         &self,
         user_id: Uuid,
     ) -> Result<HashMap<String, i32>, Error>;
+
+    async fn get_user_complete_profile(
+        &self,
+        user_id: Uuid,
+    ) -> Result<UserProfileData, Error>;
 }
 
 #[async_trait]
@@ -111,26 +131,18 @@ impl UserExt for DBClient {
         email: Option<&str>,
         token: Option<&str>,
     ) -> Result<Option<User>, Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await .map_err(|e| { log::error!("Error: {}", e); e })?;
         let mut user: Option<User> = None;
         if let Some(user_id) = user_id {
-            user = query_as!(
+            user = sqlx::query_as!(
                 User,
                 r#"
                 SELECT 
-                    id, 
-                    name, 
-                    email, 
-                    phone,
-                    location,
-                    bio,
-                    birth_date,
-                    password, 
-                    verified, 
-                    created_at, 
-                    updated_at, 
-                    verification_token, 
-                    token_expiry, 
+                    id, name, email, phone, location, bio, birth_date,
+                    password, verified,
+                    email_notifications, course_reminders, new_content,
+                    created_at, updated_at,
+                    verification_token, token_expiry,
                     role as "role: UserRole",
                     profile_image_url,
                     subscription_expires_at
@@ -138,29 +150,19 @@ impl UserExt for DBClient {
                 WHERE id = $1
                 "#,
                 user_id
-            ).fetch_optional(&mut *tx).await.map_err(|e| {
-                log::error!("ERROR: {}", e);
-                e
-            })?
-            ;
+            )
+            .fetch_optional(&mut *tx).await.map_err(|e| { log::error!("ERROR: {}", e); e })? ;
+
         } else if let Some(name) = name {
-            user = query_as!(
+           user =  sqlx::query_as!(
                 User,
                 r#"
                 SELECT 
-                    id, 
-                    name, 
-                    email, 
-                    phone,
-                    location,
-                    bio,
-                    birth_date,
-                    password, 
-                    verified, 
-                    created_at, 
-                    updated_at, 
-                    verification_token, 
-                    token_expiry, 
+                    id, name, email, phone, location, bio, birth_date,
+                    password, verified,
+                    email_notifications, course_reminders, new_content,
+                    created_at, updated_at,
+                    verification_token, token_expiry,
                     role as "role: UserRole",
                     profile_image_url,
                     subscription_expires_at
@@ -168,29 +170,19 @@ impl UserExt for DBClient {
                 WHERE name = $1
                 "#,
                 name
-            ).fetch_optional(&mut *tx).await.map_err(|e| {
-                log::error!("ERROR: {}", e);
-                e
-            })?
-            ;
+            )
+            .fetch_optional(&mut *tx).await.map_err(|e| { log::error!("ERROR: {}", e); e })? ;
+
         } else if let Some(email) = email {
-            user = query_as!(
+            user = sqlx::query_as!(
                 User,
                 r#"
                 SELECT 
-                    id, 
-                    name, 
-                    email, 
-                    phone,
-                    location,
-                    bio,
-                    birth_date,
-                    password, 
-                    verified, 
-                    created_at, 
-                    updated_at, 
-                    verification_token, 
-                    token_expiry, 
+                    id, name, email, phone, location, bio, birth_date,
+                    password, verified,
+                    email_notifications, course_reminders, new_content,
+                    created_at, updated_at,
+                    verification_token, token_expiry,
                     role as "role: UserRole",
                     profile_image_url,
                     subscription_expires_at
@@ -198,29 +190,19 @@ impl UserExt for DBClient {
                 WHERE email = $1
                 "#,
                 email
-            ).fetch_optional(&mut *tx).await.map_err(|e| {
-                log::error!("ERROR: {}", e);
-                e
-            })?
-            ;
+            )
+            .fetch_optional(&mut *tx).await.map_err(|e| { log::error!("ERROR: {}", e); e })? ;
+
         } else if let Some(token) = token {
-            user = query_as!(
+            user = sqlx::query_as!(
                 User,
                 r#"
                 SELECT 
-                    id, 
-                    name, 
-                    email, 
-                    phone,
-                    location,
-                    bio,
-                    birth_date,
-                    password, 
-                    verified, 
-                    created_at, 
-                    updated_at, 
-                    verification_token, 
-                    token_expiry, 
+                    id, name, email, phone, location, bio, birth_date,
+                    password, verified,
+                    email_notifications, course_reminders, new_content,
+                    created_at, updated_at,
+                    verification_token, token_expiry,
                     role as "role: UserRole",
                     profile_image_url,
                     subscription_expires_at
@@ -228,13 +210,11 @@ impl UserExt for DBClient {
                 WHERE verification_token = $1
                 "#,
                 token
-            ).fetch_optional(&mut *tx).await.map_err(|e| {
-                log::error!("ERROR: {}", e);
-                e
-            })?
-            ;
-        }
-        tx.commit().await?;
+            )
+            .fetch_optional(&mut *tx).await.map_err(|e| { log::error!("ERROR: {}", e); e })? ;
+
+        };
+        tx.commit().await.map_err(|e| { log::error!("Error: {}", e); e })?;
         Ok(user)
     }
 
@@ -244,7 +224,11 @@ impl UserExt for DBClient {
         limit: usize,
     ) -> Result<Vec<User>, Error> {
         let offset = (page - 1) * limit as u32;
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
 
         let users = query_as!(
             User,
@@ -258,6 +242,7 @@ impl UserExt for DBClient {
                 birth_date,
                 password, 
                 verified, 
+                email_notifications, course_reminders, new_content,
                 created_at, 
                 updated_at, 
                 verification_token, 
@@ -275,7 +260,11 @@ impl UserExt for DBClient {
             e
         })?
         ;
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(users)
     }
 
@@ -288,7 +277,11 @@ impl UserExt for DBClient {
         token_expiry: Option<DateTime<Utc>>,
         role: Option<UserRole>,
     ) -> Result<User, Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         let role = role.unwrap_or(UserRole::User);
         let user = query_as!(
             User,
@@ -305,6 +298,7 @@ impl UserExt for DBClient {
                 birth_date,
                 password, 
                 verified, 
+                email_notifications, course_reminders, new_content,
                 created_at, 
                 updated_at, 
                 verification_token, 
@@ -326,12 +320,20 @@ impl UserExt for DBClient {
             e
         })?
         ;
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(user)
     }
 
     async fn get_user_count(&self) -> Result<i64, Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         let count = sqlx::query_scalar!(
             r#"SELECT COUNT(*) FROM users"#
         )
@@ -341,7 +343,11 @@ impl UserExt for DBClient {
             e
         })?
         ;
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(count.unwrap_or(0))
     }
 
@@ -350,7 +356,11 @@ impl UserExt for DBClient {
         user_id: Uuid,
         new_name: T
     ) -> Result<User, Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         let user = query_as!(
             User,
             r#"
@@ -367,6 +377,7 @@ impl UserExt for DBClient {
                 birth_date,
                 password, 
                 verified, 
+                email_notifications, course_reminders, new_content,
                 created_at, 
                 updated_at, 
                 verification_token, 
@@ -383,7 +394,11 @@ impl UserExt for DBClient {
             e
         })?
         ;
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(user)
     }
 
@@ -392,7 +407,11 @@ impl UserExt for DBClient {
         user_id: Uuid,
         new_role: UserRole
     ) -> Result<User, Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         let user = query_as!(
             User,
             r#"
@@ -409,6 +428,7 @@ impl UserExt for DBClient {
                 birth_date,
                 password, 
                 verified, 
+                email_notifications, course_reminders, new_content,
                 created_at, 
                 updated_at, 
                 verification_token, 
@@ -425,7 +445,11 @@ impl UserExt for DBClient {
             e
         })?
         ;
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(user)
     }
 
@@ -439,7 +463,11 @@ impl UserExt for DBClient {
         birth_date: Option<chrono::NaiveDate>,
         profile_image_url: Option<String>,
     ) -> Result<User, Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         let user = query_as!(
             User,
             r#"
@@ -463,6 +491,7 @@ impl UserExt for DBClient {
                 birth_date,
                 password,
                 verified,
+                email_notifications, course_reminders, new_content,
                 created_at,
                 updated_at,
                 verification_token,
@@ -485,7 +514,11 @@ impl UserExt for DBClient {
             e
         })?
         ;
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(user)
     }
 
@@ -494,7 +527,11 @@ impl UserExt for DBClient {
         user_id: Uuid,
         new_password: String
     ) -> Result<User, Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         let user = query_as!(
             User,
             r#"
@@ -511,6 +548,7 @@ impl UserExt for DBClient {
                 birth_date,
                 password, 
                 verified, 
+                email_notifications, course_reminders, new_content,
                 created_at, 
                 updated_at, 
                 verification_token, 
@@ -527,7 +565,11 @@ impl UserExt for DBClient {
             e
         })?
         ;
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(user)
     }
 
@@ -535,7 +577,11 @@ impl UserExt for DBClient {
         &self,
         token: &str,
     ) -> Result<(), Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         let _ =sqlx::query!(
             r#"
             UPDATE users
@@ -548,7 +594,11 @@ impl UserExt for DBClient {
             token
         ).execute(&mut *tx)
        .await;
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(())
     }
 
@@ -558,7 +608,11 @@ impl UserExt for DBClient {
         token: &str,
         token_expiry: DateTime<Utc>,
     ) -> Result<(), Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         let _ = sqlx::query!(
             r#"
             UPDATE users
@@ -574,7 +628,11 @@ impl UserExt for DBClient {
             e
         })?
         ;
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(())
     }
 
@@ -583,7 +641,11 @@ impl UserExt for DBClient {
         user_id: Uuid,
         stat_type: &str,
     ) -> Result<i32, Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
 
         let value = sqlx::query_scalar!(
             r#"
@@ -599,9 +661,17 @@ impl UserExt for DBClient {
             stat_type
         )
         .fetch_one(&mut *tx)
-        .await?;
+        .await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
 
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(value as i32)
     }
 
@@ -618,7 +688,11 @@ impl UserExt for DBClient {
             user_id
         )
         .fetch_all(&self.pool)
-        .await?;
+        .await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
 
         for row in rows {
             stats.insert(row.stat_type, row.value);
@@ -691,6 +765,155 @@ impl UserExt for DBClient {
 
         Ok(stats)
     }
+
+    async fn get_user_complete_profile(
+        &self,
+        user_id: Uuid,
+    ) -> Result<UserProfileData, Error> {
+
+        let row = sqlx::query!(
+            r#"
+            SELECT profile
+            FROM (
+                SELECT json_build_object(
+                'user', json_build_object(
+                    'id', u.id,
+                    'name', u.name,
+                    'email', u.email,
+                    'phone', u.phone,
+                    'location', u.location,
+                    'bio', u.bio,
+                    'avatar', u.profile_image_url,
+                    'created_at', u.created_at,
+                    'email_notifications', u.email_notifications,
+                    'course_reminders', u.course_reminders,
+                    'new_content', u.new_content,
+                    'role', u.role
+                ),
+
+                'courses', COALESCE((
+                    SELECT json_agg(course_row ORDER BY created_at DESC)
+                    FROM (
+                        SELECT
+                            c.created_at,
+                            jsonb_build_object(
+                                'id', c.id,
+                                'title', c.title,
+                                'description', c.description,
+                                'long_description', c.long_description,
+                                'level', c.level,
+                                'duration', c.duration,
+                                'students', c.students,
+                                'paypal_product_id', c.paypal_product_id,
+                                'price', c.price,
+                                'image', c.image,
+                                'category', c.category,
+                                'rating', COALESCE(AVG(cr.rating), 0)::int,
+                                'rating_count', COUNT(cr.id),
+                                'created_at', c.created_at,
+                                'updated_at', c.updated_at,
+                                'features', c.features,
+
+                                -- 🔑 CLAVE
+                                'is_assigned', (uc.user_id IS NOT NULL)
+
+                            ) AS course_row
+                        FROM courses c
+
+                        -- cursos asignados (si existen)
+                        LEFT JOIN user_courses uc
+                            ON uc.course_id = c.id
+                            AND uc.user_id = u.id
+
+                        LEFT JOIN course_ratings cr
+                            ON cr.course_id = c.id
+
+                        WHERE
+                            -- 🔥 lógica principal
+                            (
+                                -- si tiene suscripción → todos los cursos
+                                EXISTS (
+                                    SELECT 1
+                                    FROM subscription s
+                                    WHERE s.user_id = u.id
+                                    AND (
+                                        s.status = true
+                                        OR (s.status = false AND s.end_time > NOW())
+                                    )
+                                )
+                                -- si NO tiene suscripción → solo asignados
+                                OR uc.user_id IS NOT NULL
+                            )
+
+                        GROUP BY c.id, uc.user_id
+                    ) sub
+                ), '[]'::json),
+
+
+
+                'achievements', COALESCE((
+                SELECT json_agg(
+                    jsonb_build_object(
+                        'id', a.id,
+                        'name', a.name,
+                        'description', a.description,
+                        'icon', a.icon,
+                        'trigger_type', a.trigger_type,
+                        'trigger_value', a.trigger_value,
+                        'active', a.active,
+                        'earned', COALESCE(ua.earned, false),
+                        'earned_at', ua.earned_at,
+                        'created_at', a.created_at
+                    )
+                    ORDER BY a.created_at ASC
+                )
+                FROM achievement a
+                LEFT JOIN user_achievement ua
+                    ON ua.achievement_id = a.id
+                    AND ua.user_id = u.id
+                WHERE a.active = true
+            ), '[]'::json),
+
+                'subscriptions', COALESCE((
+                    SELECT json_agg(s.*)
+                    FROM subscription s
+                    WHERE s.user_id = u.id
+                ), '[]'::json),
+
+                'certificates', COALESCE((
+                    SELECT json_agg(cer.*)
+                    FROM certificates cer
+                    WHERE cer.user_id = u.id
+                ), '[]'::json)
+
+                ) AS profile
+                FROM users u
+                WHERE u.id = $1
+            ) t
+            "#,
+            user_id
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(
+            |e|
+            {
+                log::error!("Error: {}", e);
+                e
+            }
+        )?;
+
+        let profile: UserProfileData = match serde_json::from_value(row.profile.unwrap()) {
+            Ok(p) => p,
+            Err(e) => {
+                log::error!("Error deserializando profile JSON: {}", e);
+                return Err(Error::Decode(Box::new(e)));
+            }
+        };
+
+        Ok(profile)
+    }
+
 }
 
 // ===================== //
@@ -933,7 +1156,11 @@ impl CourseExt for DBClient {
     }
 
     async fn get_course(&self, course_id: Uuid) -> Result<Option<Course>, Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         let course = sqlx::query_as::<_, Course>(
             r#"SELECT * FROM courses WHERE id = $1"#,
         )
@@ -944,7 +1171,11 @@ impl CourseExt for DBClient {
             e
         })?
         ;
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(course)
     }
 
@@ -1001,7 +1232,11 @@ impl CourseExt for DBClient {
         page: u32,
         limit: usize,
     ) -> Result<Vec<UserCourseDto>, Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         let offset = ((page - 1) * limit as u32) as i64;
         let courses = sqlx::query_as::<_, UserCourseDto>(
             r#"
@@ -1039,7 +1274,11 @@ impl CourseExt for DBClient {
             log::error!("ERROR: {}", e);
             e
         })?;
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(courses)
     }
 
@@ -1047,7 +1286,11 @@ impl CourseExt for DBClient {
     async fn get_all_courses_with_modules(
         &self,
     ) -> Result<Vec<CourseWithModulesDto>, Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         // 1️⃣ Traer cursos
         let rows = sqlx::query!(
             r#"
@@ -1154,7 +1397,11 @@ impl CourseExt for DBClient {
                 }
             }
         }
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(courses_map.into_values().collect())
     }
 
@@ -1163,7 +1410,11 @@ impl CourseExt for DBClient {
         course_id: Uuid,
         user_id: Option<Uuid>,
     ) -> Result<Option<CourseWithModulesDto>, Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
 
         let rows = sqlx::query!(
             r#"
@@ -1209,7 +1460,11 @@ impl CourseExt for DBClient {
             user_id
         )
         .fetch_all(&mut *tx)
-        .await?;
+        .await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
 
         if rows.is_empty() {
             return Ok(None);
@@ -1282,7 +1537,11 @@ impl CourseExt for DBClient {
             course.completed_lessons = completed_lessons;
         }
 
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(course_opt)
     }
 
@@ -1291,7 +1550,11 @@ impl CourseExt for DBClient {
         course_id: Uuid,
         user_id: Option<Uuid>,
     ) -> Result<Option<CourseWithModulesDto>, sqlx::Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
 
         // Usamos una CTE para calcular lesson_index y luego en la selección final
         // exponemos content_url y description solo cuando lesson_index = 1.
@@ -1374,10 +1637,18 @@ impl CourseExt for DBClient {
             user_id
         )
         .fetch_all(&mut *tx)
-        .await?;
+        .await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
 
         if rows.is_empty() {
-            tx.commit().await?;
+            tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
             return Ok(None);
         }
 
@@ -1454,7 +1725,11 @@ impl CourseExt for DBClient {
             course.completed_lessons = completed_lessons;
         }
 
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(course_opt)
     }
 
@@ -1464,7 +1739,11 @@ impl CourseExt for DBClient {
         course_id: Uuid,
         mut dto: UpdateCourseDTO,
     ) -> Result<CourseWithModulesDto, Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         let now = Utc::now();
 
         // Asegurar que cada módulo tenga un UUID
@@ -1633,7 +1912,11 @@ impl CourseExt for DBClient {
                 e
             });
 
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(
             self.get_all_courses_with_modules()
                 .await
@@ -1647,7 +1930,11 @@ impl CourseExt for DBClient {
 
 
     async fn delete_course(&self, course_id: Uuid) -> Result<(), Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         sqlx::query("DELETE FROM courses WHERE id = $1")
             .bind(course_id)
             .execute(&mut *tx)
@@ -1656,12 +1943,20 @@ impl CourseExt for DBClient {
             e
         })?
         ;
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(())
     }
 
     async fn get_course_count(&self) -> Result<i64, Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         let result = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM courses")
             .fetch_one(&mut *tx)
             .await.map_err(|e| {
@@ -1669,7 +1964,11 @@ impl CourseExt for DBClient {
             e
         })?
         ;
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(result)
     }
 
@@ -1679,7 +1978,11 @@ impl CourseExt for DBClient {
         user_id: Uuid,
         comment: String,
     ) -> Result<CommentLessonDto, Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         let now = Utc::now();
         let result = sqlx::query_as::<_, CommentLessonDto>(
                 r#"
@@ -1710,12 +2013,20 @@ impl CourseExt for DBClient {
                 e
             }
         )?;
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(result)
     }
 
     async fn get_lesson_comments(&self, lesson_id: Uuid) -> Result<Vec<CommentLessonDto>, Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         let result = sqlx::query_as::<_, CommentLessonDto>(
             r#"
             SELECT
@@ -1738,12 +2049,20 @@ impl CourseExt for DBClient {
                 log::error!("ERROR: {}", e);
                 e
             })?;
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(result)
     }
 
     async fn delete_lesson_comment(&self, comment_id: Uuid) -> Result<(), Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         sqlx::query("DELETE FROM lesson_comments WHERE id = $1")
             .bind(comment_id)
             .execute(&mut *tx)
@@ -1752,7 +2071,11 @@ impl CourseExt for DBClient {
                 log::error!("ERROR: {}", e);
                 e
             })?;
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(())
     }
 
@@ -1777,7 +2100,11 @@ impl CourseExt for DBClient {
             rating
         )
         .execute(&self.pool)
-        .await?;
+        .await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
 
         Ok(())
     }
@@ -1801,7 +2128,11 @@ impl CourseExt for DBClient {
             course_id
         )
         .fetch_one(&self.pool)
-        .await?;
+        .await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
 
         // 2. Rating del usuario (opcional)
         let user_rating = if let Some(user_id) = user_id {
@@ -1938,7 +2269,11 @@ impl AchievementExt for DBClient {
         trigger_value: i32,
         active: bool,
     ) -> Result<Achievement, Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         let id = Uuid::new_v4();
         let now = Utc::now();
 
@@ -1963,7 +2298,11 @@ impl AchievementExt for DBClient {
             e
         })?
         ;
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(achievement)
     }
 
@@ -1977,7 +2316,11 @@ impl AchievementExt for DBClient {
         trigger_value: Option<i32>,
         active: Option<bool>,
     ) -> Result<Achievement, Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
 
         let achievement = sqlx::query_as::<_, Achievement>(
             r#"
@@ -2004,7 +2347,11 @@ impl AchievementExt for DBClient {
             log::error!("ERROR: {}", e);
             e
         })?;
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(achievement)
     }
 
@@ -2013,7 +2360,11 @@ impl AchievementExt for DBClient {
         page: u32,
         limit: usize,
     ) -> Result<Vec<Achievement>, Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         let offset = ((page - 1) * limit as u32) as i64;
 
         let achievements = sqlx::query_as::<_, Achievement>(
@@ -2032,13 +2383,21 @@ impl AchievementExt for DBClient {
             e
         })?
         ;
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(achievements)
     }
 
     async fn get_achievement(&self, achievement_id: Uuid)
         -> Result<Option<Achievement>, Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         let achievement = sqlx::query_as::<_, Achievement>(
             r#"
             SELECT id, name, description, icon, trigger_type, trigger_value, active, created_at
@@ -2053,12 +2412,20 @@ impl AchievementExt for DBClient {
             e
         })?
         ;
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(achievement)
     }
 
     async fn delete_achievement(&self, achievement_id: Uuid) -> Result<(), Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         sqlx::query("DELETE FROM achievement WHERE id = $1")
             .bind(achievement_id)
             .execute(&mut *tx)
@@ -2067,7 +2434,11 @@ impl AchievementExt for DBClient {
             e
         })?
         ;
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(())
     }
 }
@@ -2079,7 +2450,11 @@ impl UserAchievementExt for DBClient {
         user_id: Uuid,
         achievement_id: Uuid,
     ) -> Result<UserAchievement, Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         let id = Uuid::new_v4();
 
         let user_achievement = sqlx::query_as::<_, UserAchievement>(
@@ -2098,7 +2473,11 @@ impl UserAchievementExt for DBClient {
             e
         })?
         ;
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(user_achievement)
     }
 
@@ -2107,7 +2486,11 @@ impl UserAchievementExt for DBClient {
         user_id: Uuid,
         achievement_id: Uuid,
     ) -> Result<UserAchievement, Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
 
         let user_achievement = sqlx::query_as::<_, UserAchievement>(
             r#"
@@ -2123,9 +2506,17 @@ impl UserAchievementExt for DBClient {
         .bind(achievement_id)
         .bind(Utc::now())
         .fetch_one(&mut *tx)
-        .await?;
+        .await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
 
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(user_achievement)
     }
 
@@ -2170,15 +2561,27 @@ impl UserAchievementExt for DBClient {
         user_id: Uuid,
         achievement_id: Uuid,
     ) -> Result<bool, Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         let exists = sqlx::query_scalar::<_, bool>(
             "SELECT EXISTS(SELECT 1 FROM user_achievement WHERE user_id = $1 AND achievement_id = $2 AND earned = true)",
         )
         .bind(user_id)
         .bind(achievement_id)
         .fetch_one(&mut *tx)
-        .await?;
-        tx.commit().await?;
+        .await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(exists)
     }
 
@@ -2186,7 +2589,11 @@ impl UserAchievementExt for DBClient {
         &self,
         user_id: Uuid,
     ) -> Result<Vec<serde_json::Value>, Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         let rows = sqlx::query(
             r#"
             SELECT
@@ -2230,7 +2637,11 @@ impl UserAchievementExt for DBClient {
             })
             .collect();
 
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(result)
     }
 
@@ -2240,7 +2651,11 @@ impl UserAchievementExt for DBClient {
         action: &str,
         value: Option<i32>,
     ) -> Result<Vec<Achievement>, Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         let fallback_value = value.unwrap_or(1);
 
         // 1️⃣ Calcular el valor actual del usuario
@@ -2392,7 +2807,11 @@ impl UserAchievementExt for DBClient {
             }
         }
 
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(awarded)
     }
 }
@@ -2455,14 +2874,22 @@ impl CoursePurchaseExt for DBClient {
         payment_method: String,
         status: String,
     ) -> Result<(), Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         // Verificar que el curso existe
         let course_exists = query_scalar!(
             "SELECT EXISTS(SELECT 1 FROM courses WHERE id = $1)",
             course_id
         )
         .fetch_one(&mut *tx)
-        .await?;
+        .await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
 
         if !course_exists.unwrap_or(false) {
             return Err(Error::RowNotFound);
@@ -2500,7 +2927,11 @@ impl CoursePurchaseExt for DBClient {
             course_id
         )
         .fetch_one(&mut *tx)
-        .await?;
+        .await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
 
         if !user_course_exists.unwrap_or(false) {
             query!(
@@ -2514,7 +2945,11 @@ impl CoursePurchaseExt for DBClient {
                 Utc::now(),
             )
             .execute(&mut *tx)
-            .await?;
+            .await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
             query!(
                 r#"
                 UPDATE courses
@@ -2524,7 +2959,11 @@ impl CoursePurchaseExt for DBClient {
                 course_id
             )
             .execute(&mut *tx)
-            .await?;
+            .await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         }
 
         // Inicializar progreso del curso si no existe
@@ -2534,7 +2973,11 @@ impl CoursePurchaseExt for DBClient {
             course_id
         )
         .fetch_one(&mut *tx)
-        .await?;
+        .await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
 
         if !progress_exists.unwrap_or(false) {
             // Obtener el número total de lecciones del curso
@@ -2549,7 +2992,11 @@ impl CoursePurchaseExt for DBClient {
                 course_id
             )
             .fetch_one(&mut *tx)
-            .await?;
+            .await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
 
             let total_lessons_i32 = total_lessons.map(|v| v as i32);
 
@@ -2570,9 +3017,17 @@ impl CoursePurchaseExt for DBClient {
                 Utc::now()
             )
             .execute(&mut *tx)
-            .await?;
+            .await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         }
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
 
         // Verificar logros de cursos inscritos
         let _ = self.check_and_award_achievements(user_id, "courses_enrolled", None).await;
@@ -2585,14 +3040,22 @@ impl CoursePurchaseExt for DBClient {
         user_id: Uuid,
         course_id: Uuid
     ) -> Result<Option<bool>, Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         // 1. Verificar si el usuario es admin
         let is_admin = query_scalar!(
             "SELECT EXISTS(SELECT 1 FROM users WHERE id = $1 AND role = 'admin')",
             user_id
         )
         .fetch_one(&mut *tx)
-        .await?;
+        .await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
 
         if is_admin.unwrap_or(false) {
             return Ok(Some(true));
@@ -2604,7 +3067,11 @@ impl CoursePurchaseExt for DBClient {
             user_id
         )
         .fetch_one(&mut *tx)
-        .await?;
+        .await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
 
         if has_active_subscription.unwrap_or(false) {
             return Ok(Some(true));
@@ -2627,7 +3094,11 @@ impl CoursePurchaseExt for DBClient {
             log::error!("Error: {}", e);
             e
         });
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         return check
     }
 
@@ -2635,7 +3106,11 @@ impl CoursePurchaseExt for DBClient {
         &self,
         user_id: Uuid
     ) -> Result<Vec<Uuid>, Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         let purcha = query_as::<_, UserCourse>(
             r#"
             SELECT id, user_id, course_id, purchased_at, created_at, updated_at
@@ -2653,7 +3128,11 @@ impl CoursePurchaseExt for DBClient {
         .map(|user_courses| {
             user_courses.into_iter().map(|uc| uc.course_id).collect()
         });
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         return purcha
     }
 
@@ -2662,7 +3141,11 @@ impl CoursePurchaseExt for DBClient {
         user_id: Uuid,
         course_id: Uuid
     ) -> Result<Option<CourseProgress>, Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         let progress = query_as::<_, CourseProgress>(
             r#"
             SELECT * FROM course_progress
@@ -2676,7 +3159,11 @@ impl CoursePurchaseExt for DBClient {
             log::error!("ERROR: {}", e);
             e
         });
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         return progress
     }
 
@@ -2687,7 +3174,11 @@ impl CoursePurchaseExt for DBClient {
         completed_lessons: i32,
         progress_percentage: f32
     ) -> Result<(), Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         let _ = query!(
             r#"
             UPDATE course_progress
@@ -2709,7 +3200,11 @@ impl CoursePurchaseExt for DBClient {
                 e
             }
         );
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(())
     }
 
@@ -2720,7 +3215,11 @@ impl CoursePurchaseExt for DBClient {
         is_completed: bool,
         progress: Option<f64>,
     ) -> Result<(), Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
 
         // Actualizar o crear el progreso de la lección
         let _ = sqlx::query!(
@@ -2756,7 +3255,11 @@ impl CoursePurchaseExt for DBClient {
             lesson_id
         )
         .fetch_one(&mut *tx)
-        .await?;
+        .await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
 
         let course_id = sqlx::query_scalar!(
             r#"
@@ -2765,7 +3268,11 @@ impl CoursePurchaseExt for DBClient {
             module_id
         )
         .fetch_one(&mut *tx)
-        .await?;
+        .await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
 
         let total_lessons = sqlx::query_scalar!(
             r#"
@@ -2774,7 +3281,11 @@ impl CoursePurchaseExt for DBClient {
             course_id
         )
         .fetch_one(&mut *tx)
-        .await?;
+        .await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
 
         let completed_lessons = sqlx::query_scalar!(
             r#"
@@ -2789,7 +3300,11 @@ impl CoursePurchaseExt for DBClient {
             course_id
         )
         .fetch_one(&mut *tx)
-        .await?;
+        .await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
 
         // Desempaquetar los valores Option a i64
         let completed_lessons_value = completed_lessons.unwrap_or(0);
@@ -2824,8 +3339,16 @@ impl CoursePurchaseExt for DBClient {
             completed_lessons_value as i32
         )
         .execute(&mut *tx)
-        .await?;
-        tx.commit().await?;
+        .await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         // Otorgar logros después del commit
         if is_completed {
             let _ = self
@@ -2854,6 +3377,7 @@ pub trait SubscriptionPlanExt {
         duration_months: i32,
         features: Option<&serde_json::Value>,
         paypal_plan_id: Option<&str>,
+        trial_days: Option<i32>,
     ) -> Result<SubscriptionPlan, Error>;
 
     async fn update_subscription_plan(
@@ -2865,6 +3389,7 @@ pub trait SubscriptionPlanExt {
         duration_months: Option<i32>,
         features: Option<&serde_json::Value>,
         paypal_plan_id: Option<&str>,
+        trial_days: Option<i32>,
         active: Option<bool>,
     ) -> Result<SubscriptionPlan, Error>;
 
@@ -2924,16 +3449,21 @@ impl SubscriptionPlanExt for DBClient {
         duration_months: i32,
         features: Option<&serde_json::Value>,
         paypal_plan_id: Option<&str>,
+        trial_days: Option<i32>,
     ) -> Result<SubscriptionPlan, Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         let id = Uuid::new_v4();
         let now = Utc::now();
 
         let plan = sqlx::query_as::<_, SubscriptionPlan>(
             r#"
-            INSERT INTO subscription_plans (id, name, description, price, duration_months, features, paypal_plan_id, active, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, true, $8, $9)
-            RETURNING id, name, description, price, duration_months, features, paypal_plan_id, active, created_at, updated_at
+            INSERT INTO subscription_plans (id, name, description, price, duration_months, features, paypal_plan_id, trial_days, active, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, $9, $10)
+            RETURNING id, name, description, price, duration_months, features, paypal_plan_id, trial_days, active, created_at, updated_at
             "#,
         )
         .bind(id)
@@ -2943,6 +3473,7 @@ impl SubscriptionPlanExt for DBClient {
         .bind(duration_months)
         .bind(features)
         .bind(paypal_plan_id)
+        .bind(trial_days)
         .bind(now)
         .bind(now)
         .fetch_one(&mut *tx)
@@ -2950,7 +3481,11 @@ impl SubscriptionPlanExt for DBClient {
             log::error!("ERROR: {}", e);
             e
         })?;
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(plan)
     }
 
@@ -2963,9 +3498,14 @@ impl SubscriptionPlanExt for DBClient {
         duration_months: Option<i32>,
         features: Option<&serde_json::Value>,
         paypal_plan_id: Option<&str>,
+        trial_days: Option<i32>,
         active: Option<bool>,
     ) -> Result<SubscriptionPlan, Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         let now = Utc::now();
 
         let plan = sqlx::query_as::<_, SubscriptionPlan>(
@@ -2977,10 +3517,11 @@ impl SubscriptionPlanExt for DBClient {
                 duration_months = COALESCE($5, duration_months),
                 features = COALESCE($6, features),
                 paypal_plan_id = COALESCE($7, paypal_plan_id),
-                active = COALESCE($8, active),
-                updated_at = $9
+                trial_days = COALESCE($8, trial_days),
+                active = COALESCE($9, active),
+                updated_at = $10
             WHERE id = $1
-            RETURNING id, name, description, price, duration_months, features, paypal_plan_id, active, created_at, updated_at
+            RETURNING id, name, description, price, duration_months, features, paypal_plan_id, trial_days, active, created_at, updated_at
             "#,
         )
         .bind(plan_id)
@@ -2990,6 +3531,7 @@ impl SubscriptionPlanExt for DBClient {
         .bind(duration_months)
         .bind(features)
         .bind(paypal_plan_id)
+        .bind(trial_days)
         .bind(active)
         .bind(now)
         .fetch_one(&mut *tx)
@@ -2997,12 +3539,20 @@ impl SubscriptionPlanExt for DBClient {
             log::error!("ERROR: {}", e);
             e
         })?;
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(plan)
     }
 
     async fn delete_subscription_plan(&self, plan_id: Uuid) -> Result<(), Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         sqlx::query("DELETE FROM subscription_plans WHERE id = $1")
             .bind(plan_id)
             .execute(&mut *tx)
@@ -3010,15 +3560,23 @@ impl SubscriptionPlanExt for DBClient {
                 log::error!("ERROR: {}", e);
                 e
             })?;
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(())
     }
 
     async fn get_subscription_plans(&self) -> Result<Vec<SubscriptionPlan>, Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         let plans = sqlx::query_as::<_, SubscriptionPlan>(
             r#"
-            SELECT id, name, description, price, duration_months, features, paypal_plan_id, active, created_at, updated_at
+            SELECT id, name, description, price, duration_months, features, paypal_plan_id, trial_days, active, created_at, updated_at
             FROM subscription_plans
             WHERE active = true
             ORDER BY created_at DESC
@@ -3029,7 +3587,11 @@ impl SubscriptionPlanExt for DBClient {
             log::error!("ERROR: {}", e);
             e
         })?;
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(plans)
     }
 }
@@ -3042,7 +3604,11 @@ impl SubscriptionExt for DBClient {
         paypal_id: &String, // El ID que empieza con I-XXXX
         plan_id: &String,   // El ID del plan en tu sistema
     ) -> Result<Subscription, Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         let id = Uuid::new_v4();
         let now = Utc::now();
 
@@ -3093,7 +3659,11 @@ impl SubscriptionExt for DBClient {
             e
         })?;
 
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(subscription)
     }
 
@@ -3101,7 +3671,11 @@ impl SubscriptionExt for DBClient {
         &self,
         user_id: Uuid,
     ) -> Result<Vec<Subscription>, Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         let subscriptions = sqlx::query_as::<_, Subscription>(
             r#"
             SELECT id, user_id, paypal_subscription_id, status, plan_id, start_time, end_time, created_at, updated_at
@@ -3116,7 +3690,11 @@ impl SubscriptionExt for DBClient {
             log::error!("ERROR: {}", e);
             e
         })?;
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(subscriptions)
     }
 
@@ -3124,7 +3702,11 @@ impl SubscriptionExt for DBClient {
         &self,
         subscription_id: Uuid,
     ) -> Result<(), Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         let now = Utc::now();
 
         sqlx::query(
@@ -3141,7 +3723,11 @@ impl SubscriptionExt for DBClient {
             log::error!("ERROR: {}", e);
             e
         })?;
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(())
     }
 
@@ -3149,7 +3735,11 @@ impl SubscriptionExt for DBClient {
         &self,
         paypal_subscription_id: &str,
     ) -> Result<(), Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         let now = Utc::now();
 
         // Obtener plan_id de la suscripción
@@ -3200,7 +3790,11 @@ impl SubscriptionExt for DBClient {
             }
         }
 
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(())
     }
 
@@ -3209,7 +3803,11 @@ impl SubscriptionExt for DBClient {
         paypal_subscription_id: &str,
         status: bool,
     ) -> Result<(), Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         let now = Utc::now();
 
         sqlx::query(
@@ -3227,7 +3825,11 @@ impl SubscriptionExt for DBClient {
             log::error!("ERROR: {}", e);
             e
         })?;
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(())
     }
 
@@ -3235,7 +3837,11 @@ impl SubscriptionExt for DBClient {
         &self,
         paypal_subscription_id: &str,
     ) -> Result<(), Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         let now = Utc::now();
 
         sqlx::query(
@@ -3252,7 +3858,11 @@ impl SubscriptionExt for DBClient {
             log::error!("ERROR: {}", e);
             e
         })?;
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(())
     }
 
@@ -3260,7 +3870,11 @@ impl SubscriptionExt for DBClient {
         &self,
         user_id: Uuid,
     ) -> Result<bool, Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         let has_active = sqlx::query_scalar::<_, bool>(
             r#"
             SELECT EXISTS(
@@ -3275,7 +3889,11 @@ impl SubscriptionExt for DBClient {
             log::error!("ERROR: {}", e);
             e
         })?;
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(has_active)
     }
 }
@@ -3313,7 +3931,11 @@ impl PasswordResetTokenExt for DBClient {
         token_hash: &str,
         expires_at: DateTime<Utc>,
     ) -> Result<PasswordResetToken, Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         let id = Uuid::new_v4();
 
         // Obtener la versión más alta para este usuario
@@ -3345,7 +3967,11 @@ impl PasswordResetTokenExt for DBClient {
             log::error!("ERROR: {}", e);
             e
         })?;
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(token)
     }
 
@@ -3353,7 +3979,11 @@ impl PasswordResetTokenExt for DBClient {
         &self,
         token_hash: &str,
     ) -> Result<Option<PasswordResetToken>, Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         let token = sqlx::query_as::<_, PasswordResetToken>(
             r#"
             SELECT id, user_id, token_hash, version, expires_at, used, created_at
@@ -3368,7 +3998,11 @@ impl PasswordResetTokenExt for DBClient {
             log::error!("ERROR: {}", e);
             e
         })?;
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(token)
     }
 
@@ -3376,7 +4010,11 @@ impl PasswordResetTokenExt for DBClient {
         &self,
         token_hash: &str,
     ) -> Result<(), Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         sqlx::query!(
             "UPDATE password_reset_tokens SET used = true WHERE token_hash = $1",
             token_hash
@@ -3386,7 +4024,11 @@ impl PasswordResetTokenExt for DBClient {
             log::error!("ERROR: {}", e);
             e
         })?;
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(())
     }
 
@@ -3394,7 +4036,11 @@ impl PasswordResetTokenExt for DBClient {
         &self,
         user_id: Uuid,
     ) -> Result<(), Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         sqlx::query!(
             "UPDATE password_reset_tokens SET used = true WHERE user_id = $1",
             user_id
@@ -3404,7 +4050,11 @@ impl PasswordResetTokenExt for DBClient {
             log::error!("ERROR: {}", e);
             e
         })?;
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(())
     }
 }
@@ -3412,7 +4062,11 @@ impl PasswordResetTokenExt for DBClient {
 #[async_trait]
 impl NotificationExt for DBClient {
     async fn get_user_notifications(&self, user_id: Uuid) -> Result<Vec<Notification>, Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         let notifications = sqlx::query_as::<_, Notification>(
             r#"
             SELECT id, user_id, title, message, sent_via, sent_at, read
@@ -3427,12 +4081,20 @@ impl NotificationExt for DBClient {
             log::error!("ERROR: {}", e);
             e
         })?;
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(notifications)
     }
 
     async fn mark_notification_read(&self, notification_id: Uuid) -> Result<(), Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         sqlx::query!(
             "UPDATE notification SET read = true WHERE id = $1",
             notification_id
@@ -3442,12 +4104,20 @@ impl NotificationExt for DBClient {
             log::error!("ERROR: {}", e);
             e
         })?;
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(())
     }
 
     async fn create_notification(&self, user_id: Uuid, title: &str, message: &str, sent_via: &str) -> Result<Notification, Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         let id = Uuid::new_v4();
         let now = Utc::now();
 
@@ -3469,7 +4139,519 @@ impl NotificationExt for DBClient {
             log::error!("ERROR: {}", e);
             e
         })?;
-        tx.commit().await?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
         Ok(notification)
+    }
+}
+
+// ===================== //
+//      QUIZ EXT
+// ===================== //
+
+#[async_trait]
+pub trait QuizExt {
+    async fn get_quiz_by_lesson(&self, lesson_id: Uuid) -> Result<Option<QuizResponseDto>, Error>;
+    async fn get_quiz(&self, quiz_id: Uuid) -> Result<Option<QuizResponseDto>, Error>;
+    async fn get_quiz_questions(&self, quiz_id: Uuid) -> Result<Vec<QuestionDto>, Error>;
+    async fn submit_quiz_attempt(
+        &self, 
+        user_id: Uuid, 
+        quiz_id: Uuid, 
+        score: i32, 
+        total_score: i32, 
+        percentage: f64, 
+        passed: bool, 
+        answers: serde_json::Value
+    ) -> Result<QuizAttempt, Error>;
+    async fn get_user_attempts(&self, user_id: Uuid, quiz_id: Uuid) -> Result<Vec<QuizAttemptDto>, Error>;
+    async fn get_attempt(&self, attempt_id: Uuid) -> Result<Option<QuizAttempt>, Error>;
+
+    // Helpers to link quiz -> course and compute completion
+    async fn get_course_id_by_quiz(&self, quiz_id: Uuid) -> Result<Option<Uuid>, Error>;
+    async fn get_total_quizzes_in_course(&self, course_id: Uuid) -> Result<i64, Error>;
+    async fn get_user_passed_quizzes_count(&self, user_id: Uuid, course_id: Uuid) -> Result<i64, Error>;
+
+    // Admin CRUD for quizzes including nested questions/options
+    async fn create_quiz_with_questions(&self, create_quiz: CreateQuizDto) -> Result<QuizResponseDto, Error>;
+    async fn update_quiz_with_questions(&self, quiz_id: Uuid, create_quiz: CreateQuizDto) -> Result<QuizResponseDto, Error>;
+    async fn delete_quiz(&self, quiz_id: Uuid) -> Result<(), Error>;
+}
+
+#[async_trait]
+impl QuizExt for DBClient {
+    async fn get_quiz_by_lesson(&self, lesson_id: Uuid) -> Result<Option<QuizResponseDto>, Error> {
+         let quiz = sqlx::query_as!(
+            QuizResponseDto,
+            r#"
+            SELECT 
+                id::text, 
+                lesson_id::text, 
+                title, 
+                description, 
+                pass_percentage,
+                (SELECT COUNT(*) FROM questions WHERE quiz_id = q.id) as "total_questions!",
+                1 as "order!" -- Placeholder
+            FROM quizzes q
+            WHERE lesson_id = $1
+            "#,
+            lesson_id
+        )
+        .fetch_optional(&self.pool)
+        .await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
+        Ok(quiz)
+    }
+
+    async fn get_quiz(&self, quiz_id: Uuid) -> Result<Option<QuizResponseDto>, Error> {
+        let quiz = sqlx::query_as!(
+            QuizResponseDto,
+            r#"
+            SELECT 
+                id::text, 
+                lesson_id::text, 
+                title, 
+                description, 
+                pass_percentage,
+                (SELECT COUNT(*) FROM questions WHERE quiz_id = q.id) as "total_questions!",
+                1 as "order!" -- Placeholder
+            FROM quizzes q
+            WHERE id = $1
+            "#,
+            quiz_id
+        )
+        .fetch_optional(&self.pool)
+        .await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
+        Ok(quiz)
+    }
+
+    async fn get_quiz_questions(&self, quiz_id: Uuid) -> Result<Vec<QuestionDto>, Error> {
+        // Fetch questions
+        let questions = sqlx::query_as!(
+            Question,
+            r#"SELECT * FROM questions WHERE quiz_id = $1 ORDER BY "order" ASC"#,
+            quiz_id
+        )
+        .fetch_all(&self.pool)
+        .await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
+
+        let mut question_dtos = Vec::new();
+
+        for q in questions {
+            let options = sqlx::query_as!(
+                OptionDto,
+                r#"SELECT id::text, text, "order" FROM question_options WHERE question_id = $1 ORDER BY "order" ASC"#,
+                q.id
+            )
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
+
+             // Only fetch correct option if needed, but for now we follow the structure
+            let correct_option = sqlx::query_scalar!(
+                r#"SELECT id::text FROM question_options WHERE question_id = $1 AND is_correct = true LIMIT 1"#,
+                q.id
+            )
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|e| {
+                log::error!("Error: {}", e);
+                e
+            })?;
+
+            question_dtos.push(QuestionDto {
+                id: q.id.to_string(),
+                question: q.question,
+                description: q.description,
+                options,
+                correct_option_id: correct_option.unwrap(),
+                explanation: q.explanation,
+                order: q.order,
+            });
+        }
+        
+        Ok(question_dtos)
+    }
+
+    async fn submit_quiz_attempt(
+        &self, 
+        user_id: Uuid, 
+        quiz_id: Uuid, 
+        score: i32, 
+        total_score: i32, 
+        percentage: f64, 
+        passed: bool, 
+        answers: serde_json::Value
+    ) -> Result<QuizAttempt, Error> {
+        let attempt = sqlx::query_as!(
+            QuizAttempt,
+            r#"
+            INSERT INTO quiz_attempts (id, quiz_id, user_id, score, total_score, percentage, passed, answers, submitted_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+            RETURNING *
+            "#,
+            Uuid::new_v4(),
+            quiz_id,
+            user_id,
+            score,
+            total_score,
+            percentage,
+            passed,
+            answers
+        )
+        .fetch_one(&self.pool)
+        .await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
+        Ok(attempt)
+    }
+
+    async fn get_user_attempts(&self, user_id: Uuid, quiz_id: Uuid) -> Result<Vec<QuizAttemptDto>, Error> {
+         let attempts = sqlx::query_as!(
+            QuizAttemptDto,
+            r#"
+            SELECT id, quiz_id, user_id, score, percentage, passed, submitted_at 
+            FROM quiz_attempts 
+            WHERE user_id = $1 AND quiz_id = $2
+            ORDER BY submitted_at DESC
+            "#,
+            user_id,
+            quiz_id
+        )
+        .fetch_all(&self.pool)
+        .await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
+        Ok(attempts)
+    }
+
+    async fn get_attempt(&self, attempt_id: Uuid) -> Result<Option<QuizAttempt>, Error> {
+        let attempt = sqlx::query_as!(
+            QuizAttempt,
+            r#"SELECT * FROM quiz_attempts WHERE id = $1"#,
+            attempt_id
+        )
+        .fetch_optional(&self.pool)
+        .await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
+        Ok(attempt)       
+    }
+
+    async fn get_course_id_by_quiz(&self, quiz_id: Uuid) -> Result<Option<Uuid>, Error> {
+        let course_id = sqlx::query_scalar!(
+            r#"
+            SELECT c.id::uuid FROM courses c
+            JOIN modules m ON m.course_id = c.id
+            JOIN lessons l ON l.module_id = m.id
+            JOIN quizzes q ON q.lesson_id = l.id
+            WHERE q.id = $1
+            LIMIT 1
+            "#,
+            quiz_id
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| {
+            log::error!("Error: {}", e);
+            e
+        })?;
+
+        Ok(course_id)
+    }
+
+    async fn get_total_quizzes_in_course(&self, course_id: Uuid) -> Result<i64, Error> {
+        let total = sqlx::query_scalar!(
+            r#"SELECT COUNT(*) FROM quizzes q
+               JOIN lessons l ON q.lesson_id = l.id
+               JOIN modules m ON l.module_id = m.id
+               WHERE m.course_id = $1"#,
+            course_id
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| { log::error!("Error: {}", e); e })?;
+
+        Ok(total.unwrap())
+    }
+
+    async fn get_user_passed_quizzes_count(&self, user_id: Uuid, course_id: Uuid) -> Result<i64, Error> {
+        let count = sqlx::query_scalar!(
+            r#"SELECT COUNT(DISTINCT q.id) FROM quiz_attempts qa
+               JOIN quizzes q ON qa.quiz_id = q.id
+               JOIN lessons l ON q.lesson_id = l.id
+               JOIN modules m ON l.module_id = m.id
+               WHERE qa.user_id = $1 AND m.course_id = $2 AND qa.passed = true"#,
+            user_id,
+            course_id
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| { log::error!("Error: {}", e); e })?;
+
+        Ok(count.unwrap())
+    }
+
+    async fn create_quiz_with_questions(&self, create_quiz: CreateQuizDto) -> Result<QuizResponseDto, Error> {
+        let mut tx = self.pool.begin().await.map_err(|e| { log::error!("Error: {}", e); e })?;
+        log::info!("Creando quiz: {:?}", create_quiz);
+        let quiz_id = Uuid::new_v4();
+        let lesson_id = Uuid::parse_str(&create_quiz.lesson_id)
+            .map_err(|e| { log::error!("UUID parse error: {}", e); e });
+
+        sqlx::query!(
+            r#"INSERT INTO quizzes (id, lesson_id, title, description, pass_percentage) VALUES ($1, $2, $3, $4, $5)"#,
+            quiz_id,
+            lesson_id.unwrap(),
+            create_quiz.title,
+            create_quiz.description,
+            create_quiz.pass_percentage.unwrap_or(70.0)
+        )
+        .execute(tx.as_mut())
+        .await
+        .map_err(|e| { log::error!("Error: {}", e); e })?;
+
+        for (_q_idx, qdto) in create_quiz.questions.into_iter().enumerate() {
+            let question_id = Uuid::new_v4();
+            sqlx::query!(
+                r#"INSERT INTO questions (id, quiz_id, question, description, explanation, "order") VALUES ($1, $2, $3, $4, $5, $6)"#,
+                question_id,
+                quiz_id,
+                qdto.question,
+                qdto.description,
+                qdto.explanation,
+                qdto.order
+            )
+            .execute(tx.as_mut())
+            .await
+            .map_err(|e| { log::error!("Error: {}", e); e })?;
+
+            for opt in qdto.options.into_iter() {
+                sqlx::query!(
+                    r#"INSERT INTO question_options (id, question_id, text, is_correct, "order") VALUES ($1, $2, $3, $4, $5)"#,
+                    Uuid::new_v4(),
+                    question_id,
+                    opt.text,
+                    opt.is_correct,
+                    opt.order
+                )
+                .execute(tx.as_mut())
+                .await
+                .map_err(|e| { log::error!("Error: {}", e); e })?;
+            }
+        }
+
+        tx.commit().await.map_err(|e| { log::error!("Error: {}", e); e })?;
+        log::info!("Quiz creado: {:?}", quiz_id);
+        // Return created quiz DTO
+        let res = self.get_quiz(quiz_id).await?;
+        log::info!("Quiz creado: {:?}", res);
+        match res {
+            Some(q) => Ok(q),
+            None => Err(sqlx::Error::RowNotFound),
+        }
+    }
+
+    async fn update_quiz_with_questions(&self, quiz_id: Uuid, create_quiz: CreateQuizDto) -> Result<QuizResponseDto, Error> {
+        let mut tx = self.pool.begin().await.map_err(|e| { log::error!("Error: {}", e); e })?;
+
+        sqlx::query!(
+            r#"UPDATE quizzes SET title = $1, description = $2, pass_percentage = $3, updated_at = NOW() WHERE id = $4"#,
+            create_quiz.title,
+            create_quiz.description,
+            create_quiz.pass_percentage.unwrap_or(70.0),
+            quiz_id
+        )
+        .execute(tx.as_mut())
+        .await
+        .map_err(|e| { log::error!("Error: {}", e); e })?;
+
+        // Delete existing questions (this cascades question_options due to FK)
+        sqlx::query!(r#"DELETE FROM questions WHERE quiz_id = $1"#, quiz_id)
+            .execute(tx.as_mut())
+            .await
+            .map_err(|e| { log::error!("Error: {}", e); e })?;
+
+        for qdto in create_quiz.questions.into_iter() {
+            let question_id = Uuid::new_v4();
+            sqlx::query!(
+                r#"INSERT INTO questions (id, quiz_id, question, description, explanation, "order") VALUES ($1, $2, $3, $4, $5, $6)"#,
+                question_id,
+                quiz_id,
+                qdto.question,
+                qdto.description,
+                qdto.explanation,
+                qdto.order
+            )
+            .execute(tx.as_mut())
+            .await
+            .map_err(|e| { log::error!("Error: {}", e); e })?;
+
+            for opt in qdto.options.into_iter() {
+                sqlx::query!(
+                    r#"INSERT INTO question_options (id, question_id, text, is_correct, "order") VALUES ($1, $2, $3, $4, $5)"#,
+                    Uuid::new_v4(),
+                    question_id,
+                    opt.text,
+                    opt.is_correct,
+                    opt.order
+                )
+                .execute(tx.as_mut())
+                .await
+                .map_err(|e| { log::error!("Error: {}", e); e })?;
+            }
+        }
+
+        tx.commit().await.map_err(|e| { log::error!("Error: {}", e); e })?;
+
+        let res = self.get_quiz(quiz_id).await?;
+        match res {
+            Some(q) => Ok(q),
+            None => Err(sqlx::Error::RowNotFound),
+        }
+    }
+
+    async fn delete_quiz(&self, quiz_id: Uuid) -> Result<(), Error> {
+        sqlx::query!(r#"DELETE FROM quizzes WHERE id = $1"#, quiz_id)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| { log::error!("Error: {}", e); e })?;
+        Ok(())
+    }
+}
+
+// ===================== //
+// CERTIFICATE EXT
+// ===================== //
+
+#[async_trait]
+pub trait CertificateExt {
+     async fn get_user_certificates(&self, user_id: Uuid) -> Result<Vec<CertificateDto>, Error>;
+     async fn get_certificate(&self, certificate_id: Uuid) -> Result<Option<CertificateDto>, Error>;
+     async fn generate_certificate(
+         &self, 
+         user_id: Uuid, 
+         course_id: Uuid, 
+         completion_percentage: i64
+    ) -> Result<Certificate, Error>;
+}
+
+#[async_trait]
+impl CertificateExt for DBClient {
+    async fn get_user_certificates(&self, user_id: Uuid) -> Result<Vec<CertificateDto>, Error> {
+        let certificates = sqlx::query_as!(
+            CertificateDto,
+            r#"
+            SELECT 
+                c.id, 
+                c.course_id, 
+                c.user_id, 
+                u.name as user_name, 
+                co.title as course_title, 
+                c.issue_date, 
+                c.completion_percentage, 
+                c.certificate_number
+            FROM certificates c
+            JOIN users u ON c.user_id = u.id
+            JOIN courses co ON c.course_id = co.id
+            WHERE c.user_id = $1
+            ORDER BY c.issue_date DESC
+            "#,
+            user_id
+        )
+        .fetch_all(&self.pool)
+        .await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
+        Ok(certificates)
+    }
+
+    async fn get_certificate(&self, certificate_id: Uuid) -> Result<Option<CertificateDto>, Error> {
+         let certificates = sqlx::query_as!(
+            CertificateDto,
+            r#"
+             SELECT 
+                c.id, 
+                c.course_id, 
+                c.user_id, 
+                u.name as user_name, 
+                co.title as course_title, 
+                c.issue_date, 
+                c.completion_percentage, 
+                c.certificate_number
+            FROM certificates c
+            JOIN users u ON c.user_id = u.id
+            JOIN courses co ON c.course_id = co.id
+            WHERE c.id = $1
+            "#,
+            certificate_id
+        )
+        .fetch_optional(&self.pool)
+        .await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
+        Ok(certificates)
+    }
+
+    async fn generate_certificate(
+         &self, 
+         user_id: Uuid, 
+         course_id: Uuid, 
+         completion_percentage: i64
+    ) -> Result<Certificate, Error> {
+        // Format: CERT-YYYY-COURSEID-USERID-SEQ (Simplified)
+        let now = Utc::now();
+        let cert_number = format!("CERT-{}-{}-{}", now.format("%Y"), course_id.as_simple().to_string().chars().take(4).collect::<String>(), Uuid::new_v4().as_simple().to_string().chars().take(5).collect::<String>()).to_uppercase();
+
+        let certificates = sqlx::query_as!(
+            Certificate,
+            r#"
+            INSERT INTO certificates (id, user_id, course_id, certificate_number, completion_percentage, issue_date)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (user_id, course_id) DO UPDATE 
+                SET completion_percentage = $5
+            RETURNING *
+            "#,
+            Uuid::new_v4(),
+            user_id,
+            course_id,
+            cert_number,
+            completion_percentage as f64,
+            now
+        )
+        .fetch_one(&self.pool)
+        .await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
+        Ok(certificates)
     }
 }

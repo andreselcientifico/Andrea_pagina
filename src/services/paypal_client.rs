@@ -193,7 +193,7 @@ impl PayPalClient {
         let body: SubRes = res.json().await?;
         Ok(body.id)
     }
-    pub async fn create_plan(&self, product_id: &str, name: &str, description: &str, price: f64, interval: &str, interval_count: i32)
+    pub async fn create_plan(&self, product_id: &str, name: &str, description: &str, price: f64, interval: &str, interval_count: i32, trial_days: Option<i32>)
         -> Result<String, reqwest::Error>
     {
         #[derive(Serialize)]
@@ -244,34 +244,67 @@ impl PayPalClient {
             id: String,
         }
 
-        let (h, v) = self.auth_header().await;
+        
+
+        let mut billing_cycles = Vec::new();
+        let mut sequence = 1;
+
+        // -----------------------------------
+        // TRIAL (7 días gratis)
+        // -----------------------------------
+        if let Some(days) = trial_days {
+            billing_cycles.push(BillingCycle {
+                frequency: Frequency {
+                    interval_unit: "DAY".to_string(),
+                    interval_count: days,
+                },
+                tenure_type: "TRIAL".to_string(),
+                sequence,
+                total_cycles: 1, // Solo una vez
+                pricing_scheme: PricingScheme {
+                    fixed_price: Amount {
+                        currency_code: "USD".to_string(),
+                        value: "0.00".to_string(),
+                    },
+                },
+            });
+
+            sequence += 1;
+        }
+
+        // -----------------------------------
+        // REGULAR (cobro normal)
+        // -----------------------------------
+        billing_cycles.push(BillingCycle {
+            frequency: Frequency {
+                interval_unit: interval.to_uppercase(),
+                interval_count,
+            },
+            tenure_type: "REGULAR".to_string(),
+            sequence,
+            total_cycles: 0, // Indefinido
+            pricing_scheme: PricingScheme {
+                fixed_price: Amount {
+                    currency_code: "USD".to_string(),
+                    value: format!("{:.2}", price),
+                },
+            },
+        });
 
         let body = PlanReq {
             product_id,
             name,
             description,
             status: "ACTIVE",
-            billing_cycles: vec![BillingCycle {
-                frequency: Frequency {
-                    interval_unit: interval.to_uppercase(),
-                    interval_count,
-                },
-                tenure_type: "REGULAR".to_string(),
-                sequence: 1,
-                total_cycles: 0, // 0 significa indefinido
-                pricing_scheme: PricingScheme {
-                    fixed_price: Amount {
-                        currency_code: "USD".to_string(),
-                        value: format!("{:.2}", price),
-                    },
-                },
-            }],
+            billing_cycles,
             payment_preferences: PaymentPreferences {
                 auto_bill_outstanding: true,
                 setup_fee_failure_action: "CANCEL".to_string(),
                 payment_failure_threshold: 3,
             },
         };
+        
+        let (h, v) = self.auth_header().await;
 
         let res = self.client.post(format!("{}/v1/billing/plans", self.base_url))
             .header(h, v)

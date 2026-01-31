@@ -1,6 +1,6 @@
 use std::{sync::Arc};
 use actix_web::{
-    HttpRequest, HttpResponse, post, get, web::{self, Data, Path, ReqData}
+    HttpRequest, HttpResponse, post, web::{self, Data, Path, ReqData}
 };
 use serde_json::{Value, json};
 use chrono::{Duration, Utc};

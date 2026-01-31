@@ -92,19 +92,6 @@ pub async fn earn_achievement(
     Ok(HttpResponse::Ok().json(user_achievement))
 }
 
-// Obtener logros de un usuario
-pub async fn get_user_achievements(
-    app_state: web::Data<Arc<AppState>>,
-    user_id: web::Path<Uuid>,
-) -> Result<HttpResponse, HttpError> {
-    let achievements = app_state.db_client
-        .get_user_achievements(*user_id)
-        .await
-        .map_err(|e| HttpError::server_error(e.to_string()))?;
-
-    Ok(HttpResponse::Ok().json(achievements))
-}
-
 // Obtener un logro específico
 pub async fn get_achievement(
     app_state: web::Data<Arc<AppState>>,

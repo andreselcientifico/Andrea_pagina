@@ -12,7 +12,7 @@ pub struct CreateSubscriptionPlanRequest {
     pub price: f64,
     pub duration_months: i32,
     pub features: Option<serde_json::Value>,
-    pub paypal_plan_id: Option<String>,
+    pub trial_days: Option<i32>,
 }
 
 #[derive(Deserialize)]
@@ -32,13 +32,13 @@ pub async fn create_subscription_plan(
         .map_err(|e| HttpError::server_error(format!("Failed to create PayPal product: {}", e)))?;
 
     // Crear plan en PayPal
-    let plan_id = app_state.paypal_client.create_plan(&product_id, &req.name, &req.description.clone().unwrap_or_else(|| req.name.clone()), req.price, "MONTH", req.duration_months)
+    let plan_id = app_state.paypal_client.create_plan(&product_id, &req.name, &req.description.clone().unwrap_or_else(|| req.name.clone()), req.price, "MONTH", req.duration_months, req.trial_days)
         .await
         .map_err(|e| HttpError::server_error(format!("Failed to create PayPal plan: {}", e)))?;
 
     // Guardar en la DB con el plan_id de PayPal
     let plan = app_state.db_client
-        .create_subscription_plan(&req.name, req.description.as_ref(), req.price, req.duration_months, req.features.as_ref(), Some(&plan_id))
+        .create_subscription_plan(&req.name, req.description.as_ref(), req.price, req.duration_months, req.features.as_ref(), Some(&plan_id), req.trial_days)
         .await
         .map_err(|e| HttpError::server_error(e.to_string()))?;
 
@@ -66,6 +66,7 @@ pub struct UpdateSubscriptionPlanRequest {
     pub duration_months: Option<i32>,
     pub features: Option<serde_json::Value>,
     pub paypal_plan_id: Option<String>,
+    pub trial_days: Option<i32>,
     pub active: Option<bool>,
 }
 
@@ -75,7 +76,7 @@ pub async fn update_subscription_plan(
     req: web::Json<UpdateSubscriptionPlanRequest>,
 ) -> Result<HttpResponse, HttpError> {
     let plan = app_state.db_client
-        .update_subscription_plan(*plan_id, req.name.as_ref().map(|s| s.as_str()), req.description.as_ref(), req.price, req.duration_months, req.features.as_ref(), req.paypal_plan_id.as_ref().map(|s| s.as_str()), req.active)
+        .update_subscription_plan(*plan_id, req.name.as_ref().map(|s| s.as_str()), req.description.as_ref(), req.price, req.duration_months, req.features.as_ref(), req.paypal_plan_id.as_ref().map(|s| s.as_str()), req.trial_days, req.active)
         .await
         .map_err(|e| HttpError::server_error(e.to_string()))?;
 

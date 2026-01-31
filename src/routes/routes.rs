@@ -54,6 +54,18 @@ use crate::func::{
         update_user_name,
         update_user_password,
         update_user_role
+    },
+    quizzes::{
+        get_quiz_by_lesson_handler,
+        get_quiz_questions_handler,
+        submit_quiz_handler,
+        get_user_attempts_handler,
+        get_attempt_detail_handler
+    },
+    certificates::{
+        get_user_certificates_handler,
+        get_certificate_detail_handler,
+        download_certificate_handler
     }
 };
 use crate::middleware::middleware::{AccessCheck, RequiredAccess, RoleCheck};
@@ -147,9 +159,12 @@ pub fn global_scope() -> impl HttpServiceFactory {
         .service(
             scope("/achievements")
                 .service(
+                    resource("/all")
+                        .route(get().to(get_achievements))
+                )
+                .service(
                     resource("")
                         .route(post().to(create_achievement))
-                        .route(get().to(get_achievements))
                         .wrap(RoleCheck::new(vec![UserRole::Admin])),
                 )
                 .service(
@@ -224,6 +239,45 @@ pub fn global_scope() -> impl HttpServiceFactory {
                     resource("/create")
                         .route(post().to(create_notification))
                         .wrap(RoleCheck::new(vec![UserRole::Admin])),
+                )
+        )
+        .service(
+            scope("/quiz")
+                .service(
+                    resource("/lesson/{lesson_id}")
+                    .route(get().to(get_quiz_by_lesson_handler))
+                )
+                .service(
+                    scope("/{quiz_id}")
+                        .route("/questions", get().to(get_quiz_questions_handler))
+                        .route("/submit", post().to(submit_quiz_handler))
+                        .route("/attempts", get().to(get_user_attempts_handler))
+                )
+                .service(
+                    scope("/edit")
+                        .wrap(RoleCheck::new(vec![UserRole::Admin]))
+                        .route("/create", post().to(crate::func::quizzes::create_quiz_handler))
+                        .route("/{quiz_id}", put().to(crate::func::quizzes::update_quiz_handler))
+                        .route("/{quiz_id}", delete().to(crate::func::quizzes::delete_quiz_handler))
+                )
+                .service(
+                    resource("/attempt/{attempt_id}")
+                        .route(get().to(get_attempt_detail_handler))
+                )
+        )
+        .service(
+            scope("/certificates")
+                .service(
+                    resource("")
+                        .route(get().to(get_user_certificates_handler))
+                )
+                .service(
+                    resource("/{certificate_id}")
+                        .route(get().to(get_certificate_detail_handler))
+                )
+                .service(
+                    resource("/{certificate_id}/download")
+                        .route(get().to(download_certificate_handler))
                 )
         )
         .service(handlers::get_user_profile)

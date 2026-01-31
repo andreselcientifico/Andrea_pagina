@@ -29,8 +29,6 @@ use dotenvy;
 use middleware::middleware::AuthMiddlewareFactory;
 use crate::routes::routes::{ auth_scope, course_scope, global_scope };
 use env_logger::Env;
-use actix_web::middleware::Logger;
-
 //==================== //
 //      APP STATE
 // ==================== //
@@ -77,15 +75,15 @@ pub async fn ping(Json(json): Json<Value>) -> impl Responder {
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     dotenvy::dotenv().expect("No se pudo cargar el archivo .env");
-    let current_dir = std::env::current_dir().expect("No se pudo obtener el directorio actual");
-    env_logger::Builder::from_env(Env::default().default_filter_or("debug, actix_server=info")).init();
+    // let current_dir = std::env::current_dir().expect("No se pudo obtener el directorio actual");
+    env_logger::Builder::from_env(Env::default().default_filter_or("debug,actix_server=info")).init();
 
-    let key_path = current_dir.join("key.pem");
-    let cert_path = current_dir.join("cert.pem");
+    // let key_path = current_dir.join("key.pem");
+    // let cert_path = current_dir.join("cert.pem");
 
-    let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
-    builder.set_private_key_file(key_path, SslFiletype::PEM).expect("No se pudo leer key.pem");
-    builder.set_certificate_chain_file(cert_path).expect("No se pudo leer cert.pem");
+    // let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
+    // builder.set_private_key_file(key_path, SslFiletype::PEM).expect("No se pudo leer key.pem");
+    // builder.set_certificate_chain_file(cert_path).expect("No se pudo leer cert.pem");
 
     // Crear conexión a Postgres
     let config = Config::init();
@@ -120,22 +118,15 @@ async fn main() -> std::io::Result<()> {
             .app_data(Data::new(app_state.clone()))
             // .wrap(Compress::default())
             .wrap(
-                actix_cors::Cors
-                    ::permissive()
-                    .allowed_origin_fn(|origin, _req_head| {
+                actix_cors::Cors::default()
+                    .allowed_origin_fn(|origin, _| {
                         let origin = origin.to_str().unwrap_or("");
-                        origin.as_bytes().ends_with(b"8080")
+                        origin.ends_with(".trycloudflare.com")
+                            || origin.ends_with(":8080")
+                            || origin.ends_with(":4173")
                     })
-                    .allowed_origin_fn(|origin, _req_head| {
-                        let origin = origin.to_str().unwrap_or("");
-                        origin.as_bytes().ends_with(b"4173")
-                    })
-                    .allowed_origin_fn(|origin, _req_head| {
-                        let origin = origin.to_str().unwrap_or("");
-                        origin.as_bytes().ends_with(b".trycloudflare.com")
-                    })
-                    .allow_any_method()
-                    .allow_any_header()
+                    .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+                    .allowed_headers(vec!["Content-Type", "Authorization"])
                     .supports_credentials()
                     .max_age(3600)
             )
@@ -147,7 +138,7 @@ async fn main() -> std::io::Result<()> {
                     .service(global_scope())
             )
     })
-        .workers(8)
+        .workers(1)
         // .bind_openssl("127.0.0.1:8000", builder)?
         .bind("0.0.0.0:8000")?
         .run().await
