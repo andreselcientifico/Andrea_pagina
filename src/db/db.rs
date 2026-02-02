@@ -8,18 +8,10 @@ use uuid::Uuid;
 
 use crate::{
     config::dtos::{
-        CommentLessonDto, CourseRatingDto, CourseWithModulesDto, CreateCourseDTO, 
-        CreateLessonDTO, CreateModuleDTO, LessonDto, ModuleWithLessonsDto, 
-        UpdateCourseDTO, UserAchievementDto, UserCourseDto, 
-        QuizResponseDto, QuestionDto, OptionDto, QuizAttemptDto, CreateQuizDto,
-        CertificateDto,
-        UserProfileData,
+        CertificateDto, CommentLessonDto, CoursePageRow, CourseRatingDto, CourseWithModulesDto, CreateCourseDTO, CreateLessonDTO, CreateModuleDTO, CreateQuizDto, LessonDto, ModuleWithLessonsDto, OptionDto, QuestionDto, QuizAttemptDto, QuizResponseDto, UpdateCourseDTO, UserAchievementDto, UserCourseDto, UserProfileData
     },
     models::models::{
-        Achievement, Course, CourseProgress, Lesson, Module, Notification, 
-        PasswordResetToken, Payment, Subscription, SubscriptionPlan, User, 
-        UserAchievement, UserCourse, UserRole, 
-        Question, QuizAttempt, Certificate
+        Achievement, Certificate, Course, CourseProgress, Lesson, Module, Notification, PasswordResetToken, Payment, Question, QuizAttempt, Subscription, SubscriptionPlan, User, UserAchievement, UserCourse, UserRole
     }
 };
 
@@ -124,6 +116,18 @@ pub trait UserExt {
 
 #[async_trait]
 impl UserExt for DBClient {
+    /// Obtiene un usuario usando **exactamente un criterio de búsqueda**.
+    /// 
+    /// Criterios permitidos (solo uno):
+    /// - `user_id`
+    /// - `name`
+    /// - `email`
+    /// - `token`
+    ///
+    /// Retorna:
+    /// - `Ok(Some(User))` si se encuentra
+    /// - `Ok(None)` si no existe
+    /// - `Err` si se envían 0 o más de 1 criterios
     async fn get_user(
         &self,
         user_id: Option<Uuid>,
@@ -131,90 +135,60 @@ impl UserExt for DBClient {
         email: Option<&str>,
         token: Option<&str>,
     ) -> Result<Option<User>, Error> {
-        let mut tx = self.pool.begin().await .map_err(|e| { log::error!("Error: {}", e); e })?;
-        let mut user: Option<User> = None;
-        if let Some(user_id) = user_id {
-            user = sqlx::query_as!(
-                User,
-                r#"
-                SELECT 
-                    id, name, email, phone, location, bio, birth_date,
-                    password, verified,
-                    email_notifications, course_reminders, new_content,
-                    created_at, updated_at,
-                    verification_token, token_expiry,
-                    role as "role: UserRole",
-                    profile_image_url,
-                    subscription_expires_at
-                FROM users
-                WHERE id = $1
-                "#,
-                user_id
-            )
-            .fetch_optional(&mut *tx).await.map_err(|e| { log::error!("ERROR: {}", e); e })? ;
+        // ============================
+        // 1. VALIDACIÓN LIGERA
+        // ============================
+        let provided = [
+            user_id.is_some(),
+            name.is_some(),
+            email.is_some(),
+            token.is_some(),
+        ]
+        .iter()
+        .filter(|&&v| v)
+        .count();
 
-        } else if let Some(name) = name {
-           user =  sqlx::query_as!(
-                User,
-                r#"
-                SELECT 
-                    id, name, email, phone, location, bio, birth_date,
-                    password, verified,
-                    email_notifications, course_reminders, new_content,
-                    created_at, updated_at,
-                    verification_token, token_expiry,
-                    role as "role: UserRole",
-                    profile_image_url,
-                    subscription_expires_at
-                FROM users
-                WHERE name = $1
-                "#,
-                name
-            )
-            .fetch_optional(&mut *tx).await.map_err(|e| { log::error!("ERROR: {}", e); e })? ;
+        if provided != 1 {
+            return Err(Error::Protocol(
+                "Debe enviarse exactamente un criterio de búsqueda".into(),
+            ));
+        }
 
-        } else if let Some(email) = email {
-            user = sqlx::query_as!(
-                User,
-                r#"
-                SELECT 
-                    id, name, email, phone, location, bio, birth_date,
-                    password, verified,
-                    email_notifications, course_reminders, new_content,
-                    created_at, updated_at,
-                    verification_token, token_expiry,
-                    role as "role: UserRole",
-                    profile_image_url,
-                    subscription_expires_at
-                FROM users
-                WHERE email = $1
-                "#,
-                email
-            )
-            .fetch_optional(&mut *tx).await.map_err(|e| { log::error!("ERROR: {}", e); e })? ;
+        // ============================
+        // 2. QUERY ÚNICA
+        // ============================
+        let user = sqlx::query_as!(
+            User,
+            r#"
+            SELECT 
+                id, name, email, phone, location, bio, birth_date,
+                password, verified,
+                email_notifications, course_reminders, new_content,
+                created_at, updated_at,
+                verification_token, token_expiry,
+                role as "role: UserRole",
+                profile_image_url,
+                subscription_expires_at
+            FROM users
+            WHERE
+                ($1::uuid IS NULL OR id = $1)
+            AND ($2::text IS NULL OR name = $2)
+            AND ($3::text IS NULL OR email = $3)
+            AND ($4::text IS NULL OR verification_token = $4)
+            LIMIT 1
+            "#,
+            user_id,
+            name,
+            email,
+            token
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| {
+            log::error!("ERROR get_user: {}", e);
+            e
+        })?;
 
-        } else if let Some(token) = token {
-            user = sqlx::query_as!(
-                User,
-                r#"
-                SELECT 
-                    id, name, email, phone, location, bio, birth_date,
-                    password, verified,
-                    email_notifications, course_reminders, new_content,
-                    created_at, updated_at,
-                    verification_token, token_expiry,
-                    role as "role: UserRole",
-                    profile_image_url,
-                    subscription_expires_at
-                FROM users
-                WHERE verification_token = $1
-                "#,
-                token
-            )
-            .fetch_optional(&mut *tx).await.map_err(|e| { log::error!("ERROR: {}", e); e })? ;
-
-        };
-        tx.commit().await.map_err(|e| { log::error!("Error: {}", e); e })?;
         Ok(user)
     }
 
@@ -931,6 +905,8 @@ pub trait CourseExt {
 
     async fn get_user_courses(&self, user_id: Uuid) -> Result<Vec<UserCourseDto>, Error>;
 
+    async fn get_courses_page(&self, user_id: Option<Uuid>, page: u32, limit: u32) -> Result<Vec<CoursePageRow>, Error>;
+
     async fn get_courses(
         &self,
         page: u32,
@@ -1225,6 +1201,83 @@ impl CourseExt for DBClient {
 
         Ok(courses)
     }
+
+    async fn get_courses_page(
+        &self,
+        user_id: Option<Uuid>,
+        page: u32,
+        limit: u32,
+    ) -> Result<Vec<CoursePageRow>, Error> {
+        let offset = ((page - 1) * limit) as i64;
+
+        let rows = sqlx::query_as::<_, CoursePageRow>(
+            r#"
+            WITH user_sub AS (
+                SELECT
+                    CASE
+                        WHEN EXISTS (
+                            SELECT 1
+                            FROM subscription s
+                            WHERE s.user_id = $1
+                            AND (
+                                s.status = true
+                                OR (s.status = false AND s.end_time > NOW())
+                            )
+                        )
+                        THEN true
+                        ELSE false
+                    END AS has_active_subscription
+            )
+            SELECT
+                c.id,
+                c.title,
+                c.description,
+                c.long_description,
+                c.level,
+                c.duration,
+                c.students,
+                c.paypal_product_id,
+                c.price,
+                c.image,
+                c.category,
+                ARRAY(
+                    SELECT jsonb_array_elements_text(c.features)
+                ) AS features,
+                COALESCE(AVG(cr.rating), 0)::float8 AS rating_average,
+                COUNT(cr.id) AS rating_count,
+                CASE
+                    WHEN uc.course_id IS NOT NULL THEN true
+                    ELSE false
+                END AS purchased,
+                us.has_active_subscription
+            FROM courses c
+            LEFT JOIN course_ratings cr
+                ON cr.course_id = c.id
+            LEFT JOIN user_courses uc
+                ON uc.course_id = c.id
+            AND uc.user_id = $1
+            CROSS JOIN user_sub us
+            GROUP BY
+                c.id,
+                uc.course_id,
+                us.has_active_subscription
+            ORDER BY c.created_at DESC
+            LIMIT $2 OFFSET $3
+            "#
+        )
+        .bind(user_id)
+        .bind(limit as i64)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| {
+            log::error!("ERROR: {}", e);
+            e
+        })?;
+
+        Ok(rows)
+    }
+
 
 
     async fn get_courses(

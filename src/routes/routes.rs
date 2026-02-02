@@ -285,4 +285,5 @@ pub fn global_scope() -> impl HttpServiceFactory {
         .service(handlers::get_user_courses_api)
         .service(payments::capture_order)
         .service(payments::verify_subscription)
+        .service(handlers::get_courses_page)
 }

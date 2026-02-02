@@ -229,6 +229,31 @@ pub struct CreateCourseDTO {
     pub modules: Vec<CreateModuleDTO>, // array de videos
 }
 
+#[derive(sqlx::FromRow, serde::Serialize)]
+pub struct CoursePageRow {
+    pub id: Uuid,
+    pub title: String,
+    pub description: String,
+    pub long_description: Option<String>,
+    pub level: String,
+    pub duration: String,
+    pub students: i32,
+    pub paypal_product_id: Option<String>,
+    pub price: Option<f64>,
+    pub image: Option<String>,
+    pub category: String,
+    pub features: Vec<String>,
+
+    // Rating
+    pub rating_average: f64,
+    pub rating_count: i64,
+
+    // User related
+    pub purchased: bool,
+    pub has_active_subscription: bool,
+}
+
+
 #[derive(Validate, Debug, Clone, Serialize, Deserialize)]
 pub struct CreateLessonDTO {
     #[validate(length(min = 1, message = "El título de la lección es requerido"))]

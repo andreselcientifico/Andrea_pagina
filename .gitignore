@@ -19,3 +19,4 @@ lerna-debug.log*
 cert.*
 key.*
 *.pem
+dist/*

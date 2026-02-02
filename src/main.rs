@@ -11,12 +11,14 @@ mod mail;
 mod routes;
 mod services;
 
-use actix_web::Responder;
+use actix_web::{Responder, web, get};
 use actix_web::web::{ scope };
+use actix_files::{Files};
+use tera::{Context, Tera};
 // use actix_web::middleware::Compress;
 use actix_web::{ web::{ Data, Json }, App, HttpServer, HttpResponse };
 use chrono::{ DateTime, Utc };
-use openssl::ssl::{ SslAcceptor, SslFiletype, SslMethod };
+// use openssl::ssl::{ SslAcceptor, SslFiletype, SslMethod };
 use config::config::Config;
 use reqwest::Client;
 use services::paypal_client::PayPalClient;
@@ -39,6 +41,7 @@ pub struct AppState {
     pub token_cache: Arc<RwLock<Option<CachedToken>>>,
     pub db_client: DBClient,
     pub paypal_client: PayPalClient,
+    pub tera: Tera,
 }
 
 #[derive(Clone, Debug)]
@@ -67,6 +70,25 @@ pub async fn ping(Json(json): Json<Value>) -> impl Responder {
         "message": "pong",
     })
     )
+}
+
+// Esta función NO tiene macro. Se usa para rutas como /cursos o /perfil
+async fn index_fallback(state: web::Data<Arc<AppState>>) -> impl Responder {
+    render_index(state).await
+}
+
+// Función auxiliar para no repetir código
+async fn render_index(state: web::Data<Arc<AppState>>) -> HttpResponse {
+    let context = Context::new();
+    match state.tera.render("index.html", &context) {
+        Ok(body) => HttpResponse::Ok()
+            .content_type("text/html; charset=utf-8")
+            .body(body),
+        Err(e) => {
+            log::error!("Error de Tera: {}", e);
+            HttpResponse::InternalServerError().body("Error interno")
+        }
+    }
 }
 
 // ===================== //
@@ -105,15 +127,33 @@ async fn main() -> std::io::Result<()> {
         config.paypal_api_mode.contains("sandbox")
     ).await;
 
+    let dist_path = std::env::current_dir()
+    .unwrap()
+    .join("dist");
+
+    // 2. Inicializamos Tera vacío y añadimos el index.html manualmente
+    let mut tera_md = Tera::default();
+    let index_path = dist_path.join("index.html");
+    let static_path = format!("{}", dist_path.clone().to_str().unwrap());
+    let assets_path = format!("{}/assets", dist_path.clone().to_str().unwrap());
+
+    if index_path.exists() {
+        tera_md.add_template_file(index_path, Some("index.html")).expect("Error al cargar index.html");
+        log::info!("✅ index.html cargado correctamente en Tera");
+    } else {
+        log::error!("❌ NO SE ENCONTRÓ el archivo en: {:?}", index_path);
+    }
     let state = AppState {
         env: config,
         client: Client::new(),
         token_cache: Arc::new(RwLock::new(None)),
         db_client: db.clone(),
         paypal_client,
+        tera: tera_md,
     };
     let app_state = Arc::new(state.clone());
     HttpServer::new(move || {
+        
         App::new()
             .app_data(Data::new(app_state.clone()))
             // .wrap(Compress::default())
@@ -124,19 +164,26 @@ async fn main() -> std::io::Result<()> {
                         origin.ends_with(".trycloudflare.com")
                             || origin.ends_with(":8080")
                             || origin.ends_with(":4173")
+                            || origin.ends_with(":8000")
                     })
                     .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
                     .allowed_headers(vec!["Content-Type", "Authorization"])
                     .supports_credentials()
                     .max_age(3600)
             )
-            .service(auth_scope())
-            .service(course_scope())
             .service(
-                scope("")
-                    .wrap(AuthMiddlewareFactory::new(app_state.clone()))
-                    .service(global_scope())
+                scope("/back")
+                    .service(auth_scope())
+                    .service(course_scope())
+                    .service(
+                        scope("")
+                            .wrap(AuthMiddlewareFactory::new(app_state.clone()))
+                            .service(global_scope())
+                    )
             )
+            .service(Files::new("/assets", &assets_path)) 
+            .service(Files::new("/", &static_path).index_file("index.html"))
+            .default_service(web::route().to(index_fallback))
     })
         .workers(1)
         // .bind_openssl("127.0.0.1:8000", builder)?

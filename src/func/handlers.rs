@@ -3,7 +3,7 @@ use actix_web::{
 };
 use std::sync::Arc;
 use validator::Validate;
-use crate::db::db::{UserAchievementExt, UserExt, CoursePurchaseExt, PasswordResetTokenExt};
+use crate::db::db::{CourseExt, CoursePurchaseExt, PasswordResetTokenExt, SubscriptionExt, UserAchievementExt, UserExt};
 use serde_json::{json};
 use chrono::{ Duration, Utc };
 use uuid::Uuid;
@@ -39,6 +39,46 @@ pub async fn get_user_courses_api(
     Ok(HttpResponse::Ok().json(json!({
         "success": true,
         "courseIds": courses
+    })))
+}
+
+#[get("/courses-page")]
+pub async fn get_courses_page(
+    app_state: Data<Arc<AppState>>,
+    req: HttpRequest,
+) -> Result<HttpResponse, HttpError> {
+
+    let user = req
+        .extensions()
+        .get::<JWTAuthMiddleware>()
+        .map(|u| u.user.clone());
+
+    let user_id = user.as_ref().map(|u| u.id);
+
+    let courses = app_state
+        .db_client
+        .get_courses_page(user_id, 1, 100)
+        .await
+        .map_err(|e| HttpError::server_error(e.to_string()))?;
+
+    let has_active_subscription = courses
+        .first()
+        .map(|c| c.has_active_subscription)
+        .unwrap_or(false);
+
+    let purchased_course_ids: Vec<Uuid> = courses
+        .iter()
+        .filter(|c| c.purchased)
+        .map(|c| c.id)
+        .collect();
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "user": {
+            "authenticated": user.is_some(),
+            "hasActiveSubscription": has_active_subscription
+        },
+        "purchasedCourseIds": purchased_course_ids,
+        "courses": courses
     })))
 }
 
