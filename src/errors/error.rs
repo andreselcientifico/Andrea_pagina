@@ -1,9 +1,9 @@
 use actix_web::{
     http::StatusCode,
     HttpResponse,
-    Responder,
     ResponseError,
 };
+use log::{error, warn};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -162,22 +162,40 @@ impl fmt::Display for HttpError {
 
 impl std::error::Error for HttpError {}
 
-impl Responder for HttpError {
-    type Body = actix_web::body::BoxBody;
-
-    fn respond_to(self, _req: &actix_web::HttpRequest) -> HttpResponse<Self::Body> {
-        self.into_http_response()
-    }
-}
-
 impl ResponseError for HttpError {
     fn error_response(&self) -> HttpResponse {
-        let status = match self.status {
-            StatusCode::BAD_REQUEST => StatusCode::BAD_REQUEST,
-            StatusCode::CONFLICT => StatusCode::CONFLICT,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        };
+        match self.status {
+            // Errores esperados del cliente
+            StatusCode::BAD_REQUEST
+            | StatusCode::UNAUTHORIZED
+            | StatusCode::FORBIDDEN
+            | StatusCode::NOT_FOUND
+            | StatusCode::CONFLICT => {
+                warn!(
+                    "HTTP {} - {}",
+                    self.status.as_u16(),
+                    self.message
+                );
 
-        HttpResponse::build(status).body(self.message.clone())
+                HttpResponse::build(self.status).json(ErrorResponse {
+                    status: "fail".to_string(),
+                    message: self.message.clone(),
+                })
+            }
+
+            // Errores internos (bugs, DB, lógica)
+            _ => {
+                error!(
+                    "HTTP {} - {}",
+                    self.status.as_u16(),
+                    self.message
+                );
+
+                HttpResponse::InternalServerError().json(ErrorResponse {
+                    status: "error".to_string(),
+                    message: "Internal server error".to_string(),
+                })
+            }
+        }
     }
 }

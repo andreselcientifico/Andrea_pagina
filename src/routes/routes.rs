@@ -86,6 +86,7 @@ pub fn auth_scope() -> impl HttpServiceFactory {
 pub fn course_scope() -> impl HttpServiceFactory {
     scope("/courses")
         .route("", get().to(courses::get_courses))
+        .service(handlers::get_courses_page)
 }
 
 
@@ -105,7 +106,7 @@ pub fn global_scope() -> impl HttpServiceFactory {
                 )
                 .service(resource("/name").route(put().to(update_user_name)))
                 .service(resource("/role").route(put().to(update_user_role)))
-                .service(resource("/password").route(put().to(update_user_password)))
+                .service(resource("/change-password").route(put().to(update_user_password)))
         )
         .service(
             scope("/payments")
@@ -285,5 +286,4 @@ pub fn global_scope() -> impl HttpServiceFactory {
         .service(handlers::get_user_courses_api)
         .service(payments::capture_order)
         .service(payments::verify_subscription)
-        .service(handlers::get_courses_page)
 }

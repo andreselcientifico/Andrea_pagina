@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use actix_web::{ 
-   HttpResponse, Responder, web::{ ReqData,Data, Json, Query}
+   HttpMessage, HttpRequest, HttpResponse, Responder, web::{ Data, Json, Query, ReqData}
 };
 use validator::Validate;
 
@@ -53,16 +53,18 @@ pub async fn get_users(
 
 pub async fn update_user_name(
     app_state: Data<Arc<AppState>>,
-    user: Data<JWTAuthMiddleware>,
+    req: HttpRequest,
     Json(body): Json<NameUpdateDTO>,
 ) -> Result<HttpResponse, HttpError> {
     body.validate()
        .map_err(|e| HttpError::bad_request(e.to_string()))?;
 
-    let user = &user.user;
+    let extensions = req.extensions();
+    let user_data = extensions
+        .get::<JWTAuthMiddleware>()
+        .ok_or_else(|| HttpError::unauthorized("Usuario no autenticado".to_string()))?;
 
-    let user_id = uuid::Uuid::parse_str(&user.id.to_string()).unwrap();
-
+    let user_id = user_data.user.id;
     let result = app_state.db_client.
         update_user_name(user_id.clone(), &body.name)
         .await
@@ -80,16 +82,18 @@ pub async fn update_user_name(
 
 pub async fn update_user_role(
     app_state: Data<Arc<AppState>>,
-    user: Data<JWTAuthMiddleware>,
+    req: HttpRequest,
     Json(body): Json<RoleUpdateDTO>,
 ) -> Result<HttpResponse, HttpError> {
     body.validate()
         .map_err(|e| HttpError::bad_request(e.to_string()))?;
 
-    let user = &user.user;
+    let extensions = req.extensions();
+    let user_data = extensions
+        .get::<JWTAuthMiddleware>()
+        .ok_or_else(|| HttpError::unauthorized("Usuario no autenticado".to_string()))?;
 
-    let user_id = uuid::Uuid::parse_str(&user.id.to_string()).unwrap();
-
+    let user_id = user_data.user.id;
     let result = app_state.db_client
         .update_user_role(user_id.clone(), body.role)
         .await
@@ -107,16 +111,18 @@ pub async fn update_user_role(
 
 pub async fn update_user_password(
     app_state: Data<Arc<AppState>>,
-    user: Data<JWTAuthMiddleware>,
+    req: HttpRequest,
     Json(body): Json<UserPasswordUpdateDTO>,
 ) -> Result<HttpResponse, HttpError> {
     body.validate()
        .map_err(|e| HttpError::bad_request(e.to_string()))?;
 
-    let user = &user.user;
+    let extensions = req.extensions();
+    let user_data = extensions
+        .get::<JWTAuthMiddleware>()
+        .ok_or_else(|| HttpError::unauthorized("Usuario no autenticado".to_string()))?;
 
-    let user_id = uuid::Uuid::parse_str(&user.id.to_string()).unwrap();
-
+    let user_id = user_data.user.id;
     let result = app_state.db_client
         .get_user(Some(user_id.clone()), None, None, None)
         .await
