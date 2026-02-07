@@ -11,7 +11,7 @@ mod mail;
 mod routes;
 mod services;
 
-use actix_web::{Responder, web, get};
+use actix_web::{Responder, web};
 use actix_web::web::{ scope };
 use actix_files::{Files};
 use tera::{Context, Tera};
@@ -185,7 +185,7 @@ async fn main() -> std::io::Result<()> {
             .service(Files::new("/", &static_path).index_file("index.html"))
             .default_service(web::route().to(index_fallback))
     })
-        .workers(1)
+        .workers(2)
         // .bind_openssl("127.0.0.1:8000", builder)?
         .bind("0.0.0.0:8000")?
         .run().await

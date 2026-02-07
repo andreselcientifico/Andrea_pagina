@@ -146,3 +146,104 @@ pub async fn send_forgot_password_email(
 
     send_email(to_email, subject, &body_html, &placeholders).await
 }
+
+/// Notifies a user about new content (course/lesson) being added
+pub async fn send_new_content_email(
+    to_email: &str,
+    username: &str,
+    content_type: &str, // "curso" or "lección"
+    content_title: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let subject = format!("🎵 ¡Nuevo {} disponible!", content_type);
+    let placeholders = vec![
+        ("{{username}}".to_string(), username.to_string()),
+        ("{{content_type}}".to_string(), content_type.to_string()),
+        ("{{content_title}}".to_string(), content_title.to_string()),
+    ];
+
+    let body_html = format!(
+        r#"
+        <html>
+            <head>
+                <style>
+                    body {{ font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; }}
+                    .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }}
+                    .content {{ padding: 30px; background: #ffffff; }}
+                    .highlight {{ background: #f5f3ff; border-left: 4px solid #764ba2; padding: 15px; margin: 20px 0; border-radius: 4px; }}
+                    .button {{ display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; }}
+                    .footer {{ background: #f8f9fa; padding: 20px; text-align: center; font-size: 12px; color: #666; border-radius: 0 0 8px 8px; }}
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h1>🎵 ¡Nuevo Contenido!</h1>
+                </div>
+                <div class="content">
+                    <p>¡Hola, {}! 👋</p>
+                    <p>Tenemos excelentes noticias para ti. Acabamos de agregar nuevo contenido a nuestra plataforma:</p>
+                    <div class="highlight">
+                        <strong>Nuevo {}:</strong> {}
+                    </div>
+                    <p>No te pierdas esta oportunidad de seguir mejorando tus habilidades con el acordeón.</p>
+                    <p style="text-align: center; margin: 30px 0;">
+                        <a href="https://academiadevallenato.com/mis-cursos" class="button">Ver Ahora</a>
+                    </p>
+                </div>
+                <div class="footer">
+                    <p>Equipo de Vallenato Academy</p>
+                    <p style="font-size: 10px; color: #999;">Si no deseas recibir estas notificaciones, puedes desactivarlas en la configuración de tu perfil.</p>
+                </div>
+            </body>
+        </html>
+        "#,
+        username,
+        content_type,
+        content_title
+    );
+
+    send_email(to_email, &subject, &body_html, &placeholders).await
+}
+
+/// Sends a custom administrative email to users
+pub async fn send_admin_bulk_email(
+    to_email: &str,
+    username: &str,
+    subject: &str,
+    html_content: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let placeholders = vec![
+        ("{{username}}".to_string(), username.to_string()),
+    ];
+
+    let body_html = format!(
+        r#"
+        <html>
+            <head>
+                <style>
+                    body {{ font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; }}
+                    .header {{ background: linear-gradient(135deg, #764ba2 0%, #667eea 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }}
+                    .content {{ padding: 30px; background: #ffffff; line-height: 1.6; }}
+                    .footer {{ background: #f8f9fa; padding: 20px; text-align: center; font-size: 12px; color: #666; border-radius: 0 0 8px 8px; }}
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h1>🎹 Vallenato Academy</h1>
+                </div>
+                <div class="content">
+                    <p>¡Hola, {}! 👋</p>
+                    {}
+                </div>
+                <div class="footer">
+                    <p>Equipo de Vallenato Academy</p>
+                    <p style="font-size: 10px; color: #999;">Si no deseas recibir estas notificaciones, puedes desactivarlas en la configuración de tu perfil.</p>
+                </div>
+            </body>
+        </html>
+        "#,
+        username,
+        html_content
+    );
+
+    send_email(to_email, subject, &body_html, &placeholders).await
+}

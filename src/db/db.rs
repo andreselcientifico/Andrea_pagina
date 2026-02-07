@@ -112,6 +112,22 @@ pub trait UserExt {
         &self,
         user_id: Uuid,
     ) -> Result<UserProfileData, Error>;
+
+    /// Gets users who have a specific notification preference enabled.
+    /// notification_type can be: "email_notifications", "course_reminders", "new_content"
+    async fn get_users_by_notification_type(
+        &self,
+        notification_type: &str,
+    ) -> Result<Vec<(String, String)>, Error>;
+
+    /// Updates user notification preferences
+    async fn update_notification_settings(
+        &self,
+        user_id: Uuid,
+        email_notifications: Option<bool>,
+        course_reminders: Option<bool>,
+        new_content: Option<bool>,
+    ) -> Result<(), Error>;
 }
 
 #[async_trait]
@@ -886,6 +902,85 @@ impl UserExt for DBClient {
         };
 
         Ok(profile)
+    }
+
+    async fn get_users_by_notification_type(
+        &self,
+        notification_type: &str,
+    ) -> Result<Vec<(String, String)>, Error> {
+        // Validate notification_type to prevent SQL injection
+        let column = match notification_type {
+            "email_notifications" => "email_notifications",
+            "course_reminders" => "course_reminders",
+            "new_content" => "new_content",
+            _ => {
+                return Err(Error::Protocol(
+                    "Invalid notification type. Must be one of: email_notifications, course_reminders, new_content".into(),
+                ));
+            }
+        };
+
+        // Build query dynamically based on valid column
+        let query = format!(
+            r#"
+            SELECT email, name
+            FROM users
+            WHERE {} = true AND verified = true
+            ORDER BY created_at DESC
+            "#,
+            column
+        );
+
+        let rows = sqlx::query(&query)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| {
+                log::error!("Error getting users by notification type: {}", e);
+                e
+            })?;
+
+        let users: Vec<(String, String)> = rows
+            .iter()
+            .map(|row| {
+                let email: String = row.get("email");
+                let name: String = row.get("name");
+                (email, name)
+            })
+            .collect();
+
+        Ok(users)
+    }
+
+    async fn update_notification_settings(
+        &self,
+        user_id: Uuid,
+        email_notifications: Option<bool>,
+        course_reminders: Option<bool>,
+        new_content: Option<bool>,
+    ) -> Result<(), Error> {
+        sqlx::query(
+            r#"
+            UPDATE users
+            SET 
+                email_notifications = COALESCE($1, email_notifications),
+                course_reminders = COALESCE($2, course_reminders),
+                new_content = COALESCE($3, new_content),
+                updated_at = NOW()
+            WHERE id = $4
+            "#
+        )
+        .bind(email_notifications)
+        .bind(course_reminders)
+        .bind(new_content)
+        .bind(user_id)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| {
+            log::error!("Error updating notification settings: {}", e);
+            e
+        })?;
+
+        Ok(())
     }
 
 }

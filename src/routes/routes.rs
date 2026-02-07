@@ -25,11 +25,6 @@ use crate::func::{
         delete_subscription_plan,
         cancel_subscription
     },
-    notifications::{
-        get_notifications,
-        mark_notification_as_read,
-        create_notification
-    },
     courses::{
         create_course,
         create_lesson_comment,
@@ -107,6 +102,7 @@ pub fn global_scope() -> impl HttpServiceFactory {
                 .service(resource("/name").route(put().to(update_user_name)))
                 .service(resource("/role").route(put().to(update_user_role)))
                 .service(resource("/change-password").route(put().to(update_user_password)))
+                .service(resource("/notifications").route(put().to(crate::func::users::update_notification_settings)))
         )
         .service(
             scope("/payments")
@@ -225,24 +221,6 @@ pub fn global_scope() -> impl HttpServiceFactory {
                 )
         )
         .service(
-            scope("/notifications")
-                .service(
-                    resource("")
-                        .route(get().to(get_notifications))
-                        .wrap(RoleCheck::new(vec![UserRole::User, UserRole::Admin])),
-                )
-                .service(
-                    resource("/{notification_id}/read")
-                        .route(put().to(mark_notification_as_read))
-                        .wrap(RoleCheck::new(vec![UserRole::User, UserRole::Admin])),
-                )
-                .service(
-                    resource("/create")
-                        .route(post().to(create_notification))
-                        .wrap(RoleCheck::new(vec![UserRole::Admin])),
-                )
-        )
-        .service(
             scope("/quiz")
                 .service(
                     resource("/lesson/{lesson_id}")
@@ -280,6 +258,12 @@ pub fn global_scope() -> impl HttpServiceFactory {
                     resource("/{certificate_id}/download")
                         .route(get().to(download_certificate_handler))
                 )
+        )
+        .service(
+            scope("/admin/notifications")
+                .wrap(RoleCheck::new(vec![UserRole::Admin]))
+                .route("/send", post().to(crate::func::notifications::send_bulk_email))
+                .route("/count/{notification_type}", get().to(crate::func::notifications::get_notification_recipients_count))
         )
         .service(handlers::get_user_profile)
         .service(handlers::update_user_profile)

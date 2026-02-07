@@ -9,9 +9,10 @@ use serde_json::json;
 use crate::{
     AppState, 
     config::dtos::{ CreateCourseDTO, CreatedCommentDto, CreatedRatingDto, ProductDTO, UpdateCourseDTO, UpdateLessonProgressDTO }, 
-    db::db::{CourseExt, CoursePurchaseExt, UserAchievementExt}, 
+    db::db::{CourseExt, CoursePurchaseExt, UserAchievementExt, UserExt}, 
     errors::error::{ ErrorMessage, HttpError }, 
     func::payments::{create_product }, 
+    mail::mails::send_new_content_email,
     middleware::middleware::{ JWTAuthMiddleware },
 };
 
@@ -238,6 +239,50 @@ pub async fn create_course(
             HttpError::server_error(s)
         }
     })?;
+
+    // Send notifications to users with course_reminders or new_content enabled
+    let app_state_clone = app_state.clone();
+    let course_title = course.title.clone();
+    
+    tokio::spawn(async move {
+        // Get users with course_reminders enabled
+        if let Ok(users_reminders) = app_state_clone.db_client
+            .get_users_by_notification_type("course_reminders")
+            .await
+        {
+            for (email, name) in users_reminders {
+                if let Err(e) = send_new_content_email(
+                    &email,
+                    &name,
+                    "curso",
+                    &course_title,
+                ).await {
+                    log::error!("Error sending course reminder email to {}: {}", email, e);
+                }
+                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            }
+        }
+
+        // Get users with new_content enabled
+        if let Ok(users_new_content) = app_state_clone.db_client
+            .get_users_by_notification_type("new_content")
+            .await
+        {
+            for (email, name) in users_new_content {
+                if let Err(e) = send_new_content_email(
+                    &email,
+                    &name,
+                    "curso",
+                    &course_title,
+                ).await {
+                    log::error!("Error sending new content email to {}: {}", email, e);
+                }
+                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            }
+        }
+        
+        log::info!("Course creation notifications sent for: {}", course_title);
+    });
 
     Ok(HttpResponse::Created().json(course))
 }

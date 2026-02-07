@@ -151,3 +151,38 @@ pub async fn update_user_password(
     }))
 
 }
+
+#[derive(Debug, serde::Deserialize)]
+pub struct UpdateNotificationSettingsDTO {
+    pub email_notifications: Option<bool>,
+    pub course_reminders: Option<bool>,
+    pub new_content: Option<bool>,
+}
+
+pub async fn update_notification_settings(
+    app_state: Data<Arc<AppState>>,
+    req: HttpRequest,
+    Json(body): Json<UpdateNotificationSettingsDTO>,
+) -> Result<HttpResponse, HttpError> {
+    let extensions = req.extensions();
+    let user_data = extensions
+        .get::<JWTAuthMiddleware>()
+        .ok_or_else(|| HttpError::unauthorized("Usuario no autenticado".to_string()))?;
+
+    let user_id = user_data.user.id;
+    
+    app_state.db_client
+        .update_notification_settings(
+            user_id,
+            body.email_notifications,
+            body.course_reminders,
+            body.new_content,
+        )
+        .await
+        .map_err(|e| HttpError::server_error(e.to_string()))?;
+
+    Ok(HttpResponse::Ok().json(Response {
+        message: "Configuración de notificaciones actualizada".to_string(),
+        status: "success",
+    }))
+}
