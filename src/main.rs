@@ -96,7 +96,9 @@ async fn render_index(state: web::Data<Arc<AppState>>) -> HttpResponse {
 // ===================== //
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    let _ = dotenvy::dotenv().expect("No se pudo cargar el archivo .env");
+    if let Err(e) = dotenvy::dotenv() {
+        log::warn!("No se cargó el archivo .env (esto es normal en producción): {}", e);
+    }
     // let current_dir = std::env::current_dir().expect("No se pudo obtener el directorio actual");
     // env_logger::Builder::from_env(Env::default().default_filter_or("debug,actix_server=info")).init();
 
