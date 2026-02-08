@@ -20,7 +20,7 @@ impl UserJwtData {
 }
 
 
-#[allow(dead_code)]
+
 pub fn is_premium(claims: &TokenClaims) -> bool {
     match claims.subscription_expires_at {
         Some(ts) => ts > Utc::now().timestamp(),

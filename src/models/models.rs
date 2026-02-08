@@ -12,7 +12,7 @@ pub enum UserRole {
     Admin,
     User,
 }
-#[allow(dead_code)]
+
 impl UserRole {
     pub fn to_str(&self) -> &str {
         match self {
@@ -55,7 +55,7 @@ pub struct User {
     pub subscription_expires_at: Option<DateTime<Utc>>, 
 }
 
-#[allow(dead_code)]
+
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct UserSettings {
     pub id: Uuid,
@@ -80,7 +80,7 @@ pub struct UserSettings {
 // ===================== //
 // CURSOS Y PROGRESO
 // ===================== //
-#[allow(dead_code)]
+
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow, PartialEq)]
 pub struct Course {
     pub id: Uuid,
@@ -123,7 +123,7 @@ pub struct Lesson {
 }
 
 
-#[allow(dead_code)]
+
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct UserCourse {
     pub id: Uuid,
@@ -141,7 +141,7 @@ pub struct UserCourse {
     pub updated_at: DateTime<Utc>,
 }
 
-#[allow(dead_code)]
+
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct CourseProgress {
     pub id: Uuid,
@@ -170,7 +170,7 @@ pub struct CourseProgress {
 // ===================== //
 // LOGROS
 // ===================== //
-#[allow(dead_code)]
+
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Achievement {
     pub id: Uuid,
@@ -183,7 +183,7 @@ pub struct Achievement {
     pub created_at: DateTime<Utc>,
 }
 
-#[allow(dead_code)]
+
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct UserAchievement {
     pub id: Uuid,
@@ -196,7 +196,7 @@ pub struct UserAchievement {
 // ===================== //
 // NOTIFICACIONES
 // ===================== //
-#[allow(dead_code)]
+
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Notification {
     pub id: Uuid,
@@ -211,7 +211,7 @@ pub struct Notification {
 // ===================== //
 // PLANES DE SUSCRIPCIÓN
 // ===================== //
-#[allow(dead_code)]
+
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct SubscriptionPlan {
     pub id: Uuid,
@@ -225,7 +225,7 @@ pub struct SubscriptionPlan {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
-#[allow(dead_code)]
+
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Subscription {
     pub id: Uuid,
@@ -242,28 +242,28 @@ pub struct Subscription {
 // ===================== //
 // RELACIONES ENTRE MODELOS
 // ===================== //
-#[allow(dead_code)]
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UserWithSettings {
     pub user: User,
     pub settings: Option<UserSettings>,
 }
 
-#[allow(dead_code)]
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UserCourseWithProgress {
     pub user_course: UserCourse,
     pub progress: Option<CourseProgress>,
 }
 
-#[allow(dead_code)]
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UserWithAchievements {
     pub user: User,
     pub achievements: Vec<UserAchievement>,
 }
 
-#[allow(dead_code)]
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FullUserProfile {
     pub user: User,
@@ -331,7 +331,7 @@ pub struct Payment {
 // ===================== //
 // TOKENS DE RESET DE CONTRASEÑA
 // ===================== //
-#[allow(dead_code)]
+
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct PasswordResetToken {
     pub id: Uuid,

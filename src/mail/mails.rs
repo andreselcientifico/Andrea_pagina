@@ -55,7 +55,7 @@ fn create_verification_link(base_url: &str, token: &str) -> String {
     format!("{}?token={}", base_url, token)
 }
 
-#[allow(dead_code)]
+
 pub async fn send_welcome_email(
     to_email: &str,
     username: &str
@@ -97,7 +97,7 @@ pub async fn send_welcome_email(
     send_email(to_email, subject, &body_html, &placeholders).await
 }
 
-#[allow(dead_code)]
+
 pub async fn send_forgot_password_email(
     to_email: &str,
     reset_link: &str,

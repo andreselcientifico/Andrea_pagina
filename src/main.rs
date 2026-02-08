@@ -30,7 +30,7 @@ use sqlx::postgres::PgPoolOptions;
 use dotenvy;
 use middleware::middleware::AuthMiddlewareFactory;
 use crate::routes::routes::{ auth_scope, course_scope, global_scope };
-use env_logger::Env;
+// use env_logger::Env;
 //==================== //
 //      APP STATE
 // ==================== //
@@ -98,7 +98,7 @@ async fn render_index(state: web::Data<Arc<AppState>>) -> HttpResponse {
 async fn main() -> std::io::Result<()> {
     dotenvy::dotenv().expect("No se pudo cargar el archivo .env");
     // let current_dir = std::env::current_dir().expect("No se pudo obtener el directorio actual");
-    env_logger::Builder::from_env(Env::default().default_filter_or("debug,actix_server=info")).init();
+    // env_logger::Builder::from_env(Env::default().default_filter_or("debug,actix_server=info")).init();
 
     // let key_path = current_dir.join("key.pem");
     // let cert_path = current_dir.join("cert.pem");

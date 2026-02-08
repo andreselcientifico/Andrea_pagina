@@ -83,13 +83,13 @@ pub trait UserExt {
         profile_image_url: Option<String>,
     ) -> Result<User, Error>;
 
-    #[allow(dead_code)]
+    
     async fn verifed_token(
         &self,
         token: &str,
     ) -> Result<(), Error>;
 
-    #[allow(dead_code)]
+    
     async fn add_verifed_token(
         &self,
         user_id: Uuid,
@@ -1032,7 +1032,7 @@ pub trait CourseExt {
 
     async fn delete_course(&self, course_id: Uuid) -> Result<(), Error>;
 
-    #[allow(dead_code)]
+    
     async fn get_course_count(&self) -> Result<i64, Error>;
 
     async fn create_lesson_comment(
@@ -2309,7 +2309,7 @@ impl CourseExt for DBClient {
 }
 // ===================== //
 
-#[allow(dead_code)]
+
 #[async_trait]
 pub trait AchievementExt {
     /// Crea un nuevo logro.
@@ -2354,7 +2354,7 @@ pub trait AchievementExt {
 #[async_trait]
 pub trait UserAchievementExt {
     /// Asigna un logro a un usuario (sin marcarlo como ganado aún).
-    #[allow(dead_code)]
+    
     async fn assign_achievement_to_user(
         &self,
         user_id: Uuid,
@@ -2362,7 +2362,7 @@ pub trait UserAchievementExt {
     ) -> Result<UserAchievement, Error>;
 
     /// Marca un logro como ganado.
-    #[allow(dead_code)]
+    
     async fn earn_achievement(
         &self,
         user_id: Uuid,
@@ -2376,7 +2376,7 @@ pub trait UserAchievementExt {
     ) -> Result<Vec<UserAchievementDto>, Error>;
 
     /// Verifica si un usuario ya ha ganado un logro específico.
-    #[allow(dead_code)]
+    
     async fn has_user_earned(
         &self,
         user_id: Uuid,
@@ -2986,13 +2986,13 @@ pub trait CoursePurchaseExt {
         &self,
         user_id: Uuid,
     ) -> Result<Vec<Uuid>, Error>;
-    #[allow(dead_code)]
+    
     async fn get_user_course_progress(
         &self,
         user_id: Uuid,
         course_id: Uuid,
     ) -> Result<Option<CourseProgress>, Error>;
-    #[allow(dead_code)]
+    
     async fn update_course_progress(
         &self,
         user_id: Uuid,

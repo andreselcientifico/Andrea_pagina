@@ -18,7 +18,7 @@ impl fmt::Display for ErrorResponse {
         write!(f, "{}", serde_json::to_string(&self).unwrap())
     }
 }
-#[allow(dead_code)]
+
 #[derive(Debug, PartialEq)]
 pub enum ErrorMessage {
     EmptyPassword,
@@ -90,7 +90,7 @@ pub struct HttpError {
 }
 
 impl HttpError {
-    #[allow(dead_code)]
+    
     pub fn new(message: impl Into<String>, status: StatusCode) -> Self {
         HttpError {
             message: message.into(),
@@ -112,7 +112,7 @@ impl HttpError {
         }
     }
 
-    #[allow(dead_code)]
+    
     pub fn not_found(message: impl Into<String>) -> Self {
         HttpError {
             message: message.into(),
@@ -134,7 +134,7 @@ impl HttpError {
         }
     }
 
-    #[allow(dead_code)]
+    
     pub fn forbidden(message: impl Into<String>) -> Self {
         HttpError {
             message: message.into(),

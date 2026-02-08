@@ -168,13 +168,13 @@ pub struct UserPasswordUpdateDTO {
     #[serde(rename = "confirmNewPassword")]
     pub confirm_new_password: String,
 }
-#[allow(dead_code)]
+
 #[derive(Serialize, Deserialize, Validate)]
 pub struct VerifyEmailQueryDTO {
     #[validate(length(min = 1, message = "El token es requerido"))]
     pub token: String,
 }
-#[allow(dead_code)]
+
 #[derive(Deserialize, Serialize, Validate, Debug, Clone)]
 pub struct ForgotPasswordRequestDTO {
     #[validate(
@@ -183,7 +183,7 @@ pub struct ForgotPasswordRequestDTO {
     )]
     pub email: String,
 }
-#[allow(dead_code)]
+
 #[derive(Debug, Serialize, Deserialize, Validate, Clone)]
 pub struct ResetPasswordRequestDTO {
     #[validate(length(min = 1, message = "El token es requerido"))]
@@ -201,7 +201,7 @@ pub struct ResetPasswordRequestDTO {
     pub confirm_new_password: String,
 }
 
-#[allow(dead_code)]
+
 #[derive(Validate, Debug, Clone, Serialize, Deserialize)]
 pub struct CreateCourseDTO {
     #[validate(length(min = 1, message = "El título del curso es requerido"))]
@@ -292,7 +292,7 @@ pub struct CreateModuleDTO {
     pub lessons: Vec<CreateLessonDTO>,
 }
 
-#[allow(dead_code)]
+
 #[derive(Validate, Debug, Clone, Serialize, Deserialize,PartialEq)]
 pub struct UpdateCourseDTO {
     #[validate(length(min = 1, message = "El título del curso es requerido"))]
@@ -413,7 +413,7 @@ pub struct CourseWithModulesDto {
     pub modules: Vec<ModuleWithLessonsDto>,
 }
 
-#[allow(dead_code)]
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CourseResponseDTO {
     pub id: String,
@@ -424,7 +424,7 @@ pub struct CourseResponseDTO {
     pub created_at: DateTime<Utc>,
 }
 
-#[allow(dead_code)]
+
 #[derive(Validate, Debug, Clone, Serialize, Deserialize)]
 pub struct CreatePaymentDTO {
     #[validate(length(min = 1, message = "El ID del curso es requerido"))]
@@ -439,7 +439,7 @@ pub struct CreatePaymentDTO {
     pub transaction_id: String,
 }
 
-#[allow(dead_code)]
+
 #[derive(Debug, Serialize, Deserialize, Validate, Clone)]
 pub struct ProductDTO {
     #[validate(length(min = 1, message = "El nombre del producto es requerido"))]
@@ -453,7 +453,7 @@ pub struct ProductDTO {
     pub home_url: Option<String>,
 }
 
-#[allow(dead_code)]
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PaymentResponseDTO {
     pub id: String,
@@ -469,7 +469,7 @@ pub struct PaymentResponseDTO {
     pub updated_at: Option<DateTime<Utc>>,
 }
 
-#[allow(dead_code)]
+
 #[derive(Validate, Debug, Clone, Serialize, Deserialize)]
 pub struct VerifyPaymentDTO {
     #[serde(default)]
@@ -478,7 +478,7 @@ pub struct VerifyPaymentDTO {
     pub transaction_id: Option<String>,
 }
 
-#[allow(dead_code)]
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UserPaymentStatusDTO {
     pub user_id: String,
@@ -487,14 +487,14 @@ pub struct UserPaymentStatusDTO {
     pub payment_date: Option<DateTime<Utc>>,
 }
 
-#[allow(dead_code)]
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UserProfileResponse {
     pub status: String,
     pub data: UserProfileData,
 }
 
-#[allow(dead_code)]
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UserProfileData {
     pub user: FilterUserDto,
@@ -504,7 +504,7 @@ pub struct UserProfileData {
     pub certificates: Vec<Certificate>,
 }
 
-#[allow(dead_code)]
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UpdateUserProfileDto {
     pub name: Option<String>,
@@ -516,7 +516,7 @@ pub struct UpdateUserProfileDto {
 }
 
 // Nuevos DTOs para courses y achievements (tipo "filter" como FilterUserDto)
-#[allow(dead_code)]
+
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct FilterCourseDto {
     pub id: Uuid,
@@ -581,7 +581,7 @@ pub struct UserAchievementDto {
 }
 
 
-#[allow(dead_code)]
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FilterAchievementDto {
     pub id: Option<String>,
