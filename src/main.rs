@@ -166,13 +166,8 @@ async fn main() -> std::io::Result<()> {
             // .wrap(Compress::default())
             .wrap(
                 actix_cors::Cors::default()
-                    .allowed_origin_fn(|origin, _| {
-                        let origin = origin.to_str().unwrap_or("");
-                        origin.ends_with(".trycloudflare.com")
-                            || origin.ends_with(":8080")
-                            || origin.ends_with(":4173")
-                            || origin.ends_with(":8000")
-                    })
+                    .allowed_origin("http://localhost:8000")
+                    .allowed_origin("https://vallenatofemenino.com")
                     .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
                     .allowed_headers(vec!["Content-Type", "Authorization"])
                     .supports_credentials()
