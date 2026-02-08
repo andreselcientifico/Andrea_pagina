@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO course_ratings (course_id, user_id, rating)\n            VALUES ($1, $2, $3)\n            ON CONFLICT (course_id, user_id)\n            DO UPDATE SET\n                rating = EXCLUDED.rating,\n                updated_at = NOW()\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d3bcede3d6a40c3cce766f6b14b36e33f58021d5dbf765c34af9a84449852cb8"
+}

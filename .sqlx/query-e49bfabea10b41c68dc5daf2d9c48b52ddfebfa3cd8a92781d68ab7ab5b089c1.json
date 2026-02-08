@@ -1,0 +1,58 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT \n                id::text, \n                lesson_id::text, \n                title, \n                description, \n                pass_percentage,\n                (SELECT COUNT(*) FROM questions WHERE quiz_id = q.id) as \"total_questions!\",\n                1 as \"order!\" -- Placeholder\n            FROM quizzes q\n            WHERE lesson_id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "lesson_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "title",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "pass_percentage",
+        "type_info": "Float8"
+      },
+      {
+        "ordinal": 5,
+        "name": "total_questions!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 6,
+        "name": "order!",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null,
+      null,
+      false,
+      true,
+      true,
+      null,
+      null
+    ]
+  },
+  "hash": "e49bfabea10b41c68dc5daf2d9c48b52ddfebfa3cd8a92781d68ab7ab5b089c1"
+}

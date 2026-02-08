@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                SELECT COUNT(l.*)\n                FROM courses c\n                JOIN modules m ON m.course_id = c.id\n                JOIN lessons l ON l.module_id = m.id\n                WHERE c.id = $1\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "3e7663618a420ab44ad952149df7bddf2bda1a857585855a63830408a733a297"
+}

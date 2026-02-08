@@ -1,0 +1,167 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            WITH course_data AS (\n                SELECT\n                    c.id AS course_id,\n                    c.title AS course_title,\n                    c.description,\n                    c.long_description,\n                    c.level,\n                    c.price,\n                    c.duration,\n                    c.students,\n                    c.image,\n                    c.category,\n                    c.features,\n                    c.created_at,\n                    c.updated_at,\n\n                    m.id AS module_id,\n                    m.title AS module_title,\n                    m.\"order\" AS module_order,\n\n                    l.id AS lesson_id,\n                    l.title AS lesson_title,\n                    l.duration AS lesson_duration,\n                    l.\"type\" AS lesson_type,\n                    l.content_url AS lesson_content_url,\n                    l.description AS lesson_description,\n                    l.\"order\" AS lesson_order,\n\n                    ulp.is_completed AS lesson_completed,\n\n                    ROW_NUMBER() OVER (ORDER BY m.\"order\" ASC NULLS LAST, l.\"order\" ASC NULLS LAST) AS lesson_index\n                FROM courses c\n                LEFT JOIN modules m ON m.course_id = c.id\n                LEFT JOIN lessons l ON l.module_id = m.id\n                LEFT JOIN user_lesson_progress ulp\n                    ON ulp.lesson_id = l.id\n                    AND ulp.user_id = $2\n                WHERE c.id = $1\n            )\n            SELECT\n                course_id,\n                course_title,\n                description,\n                long_description,\n                level,\n                price,\n                duration,\n                students,\n                image,\n                category,\n                features,\n                created_at,\n                updated_at,\n\n                module_id AS \"module_id?: Uuid\",\n                module_title AS \"module_title?\",\n                module_order AS \"module_order?\",\n\n                lesson_id AS \"lesson_id?: Uuid\",\n                lesson_title AS \"lesson_title?\",\n                lesson_duration AS \"lesson_duration?\",\n                lesson_type AS \"lesson_type?\",\n                -- Exponer content_url solo para la primera lección del curso\n                CASE WHEN lesson_index = 1 THEN lesson_content_url ELSE NULL END AS \"content_url?: String\",\n                -- Exponer description solo para la primera lección del curso\n                CASE WHEN lesson_index = 1 THEN lesson_description ELSE NULL END AS \"lesson_description?: String\",\n                lesson_order AS \"lesson_order?\",\n\n                lesson_completed AS \"lesson_completed?\",\n                lesson_index AS \"lesson_index?\"\n            FROM course_data\n            ORDER BY module_order ASC NULLS LAST, lesson_order ASC NULLS LAST\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "course_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "course_title",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "long_description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "level",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "price",
+        "type_info": "Float8"
+      },
+      {
+        "ordinal": 6,
+        "name": "duration",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "students",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 8,
+        "name": "image",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "category",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 10,
+        "name": "features",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 11,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 12,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 13,
+        "name": "module_id?: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 14,
+        "name": "module_title?",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 15,
+        "name": "module_order?",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 16,
+        "name": "lesson_id?: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 17,
+        "name": "lesson_title?",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 18,
+        "name": "lesson_duration?",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 19,
+        "name": "lesson_type?",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 20,
+        "name": "content_url?: String",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 21,
+        "name": "lesson_description?: String",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 22,
+        "name": "lesson_order?",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 23,
+        "name": "lesson_completed?",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 24,
+        "name": "lesson_index?",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      null,
+      null,
+      false,
+      true,
+      null
+    ]
+  },
+  "hash": "a52d0070d55870d60e245f2d24c8cbd5c1c47b05961eedb7866831f5724249cd"
+}

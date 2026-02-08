@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT COUNT(*) FROM user_lesson_progress\n            WHERE user_id = $1 AND is_completed = true AND lesson_id IN (\n                SELECT id FROM lessons WHERE module_id IN (\n                    SELECT id FROM modules WHERE course_id = $2\n                )\n            )\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "f64aaac70a5e2059702381995dff9ed59873f4f25b0707a2065b2254cffde2c5"
+}

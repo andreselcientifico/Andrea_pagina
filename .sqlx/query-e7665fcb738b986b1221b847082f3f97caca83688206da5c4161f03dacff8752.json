@@ -1,0 +1,161 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT \n                c.id AS course_id,\n                c.title AS course_title,\n                c.description,\n                c.long_description,\n                c.level,\n                c.price,\n                c.duration,\n                c.students,\n                c.image,\n                c.category,\n                c.features,\n                c.created_at,\n                c.updated_at,\n\n                m.id AS \"module_id?: Uuid\",\n                m.title AS \"module_title?\",\n                m.\"order\" AS \"module_order?\",\n\n                l.id AS \"lesson_id?: Uuid\",\n                l.title AS \"lesson_title?\",\n                l.duration AS \"lesson_duration?\",\n                l.\"type\" AS \"lesson_type?\",\n                l.content_url AS \"content_url?\",\n                l.description AS \"lesson_description?\",\n                l.\"order\" AS \"lesson_order?\",\n\n                ulp.is_completed AS \"lesson_completed?\"\n\n            FROM courses c\n            LEFT JOIN modules m ON m.course_id = c.id\n            LEFT JOIN lessons l ON l.module_id = m.id\n            LEFT JOIN user_lesson_progress ulp\n                ON ulp.lesson_id = l.id\n            AND ulp.user_id = $2\n            WHERE c.id = $1\n            ORDER BY m.\"order\" ASC, l.\"order\" ASC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "course_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "course_title",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "long_description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "level",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "price",
+        "type_info": "Float8"
+      },
+      {
+        "ordinal": 6,
+        "name": "duration",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "students",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 8,
+        "name": "image",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "category",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 10,
+        "name": "features",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 11,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 12,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 13,
+        "name": "module_id?: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 14,
+        "name": "module_title?",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 15,
+        "name": "module_order?",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 16,
+        "name": "lesson_id?: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 17,
+        "name": "lesson_title?",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 18,
+        "name": "lesson_duration?",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 19,
+        "name": "lesson_type?",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 20,
+        "name": "content_url?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 21,
+        "name": "lesson_description?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 22,
+        "name": "lesson_order?",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 23,
+        "name": "lesson_completed?",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "e7665fcb738b986b1221b847082f3f97caca83688206da5c4161f03dacff8752"
+}

@@ -1,0 +1,146 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE users\n            SET\n                name = COALESCE($1, name),\n                phone = COALESCE($2, phone),\n                location = COALESCE($3, location),\n                bio = COALESCE($4, bio),\n                birth_date = COALESCE($5, birth_date),\n                profile_image_url = COALESCE($6, profile_image_url),\n                updated_at = NOW()\n            WHERE id = $7\n            RETURNING\n                id,\n                name,\n                email,\n                phone,\n                location,\n                bio,\n                birth_date,\n                password,\n                verified,\n                email_notifications, course_reminders, new_content,\n                created_at,\n                updated_at,\n                verification_token,\n                token_expiry,\n                role as \"role: UserRole\",\n                profile_image_url,\n                subscription_expires_at\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "email",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "phone",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "location",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 5,
+        "name": "bio",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "birth_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 7,
+        "name": "password",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 8,
+        "name": "verified",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 9,
+        "name": "email_notifications",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 10,
+        "name": "course_reminders",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 11,
+        "name": "new_content",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 12,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 13,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 14,
+        "name": "verification_token",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 15,
+        "name": "token_expiry",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 16,
+        "name": "role: UserRole",
+        "type_info": {
+          "Custom": {
+            "name": "user_role",
+            "kind": {
+              "Enum": [
+                "admin",
+                "user"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 17,
+        "name": "profile_image_url",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 18,
+        "name": "subscription_expires_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Varchar",
+        "Varchar",
+        "Varchar",
+        "Text",
+        "Date",
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "39e74c634abc8cefaa70ff1edeb48e6c5ecc2eae32add9a666bc32562fbdb061"
+}

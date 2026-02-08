@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE quizzes SET title = $1, description = $2, pass_percentage = $3, updated_at = NOW() WHERE id = $4",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Varchar",
+        "Text",
+        "Float8",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1d00839841aaaa12322eb2d79f079ae43c8453aaa757f4a72a498d7c82d6bf83"
+}

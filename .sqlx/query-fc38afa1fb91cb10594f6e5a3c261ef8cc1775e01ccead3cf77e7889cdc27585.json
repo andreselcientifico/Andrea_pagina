@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO user_stats (user_id, stat_type, value, updated_at)\n            VALUES ($1, $2, 1, NOW())\n            ON CONFLICT (user_id, stat_type)\n            DO UPDATE\n                SET value = user_stats.value + 1,\n                    updated_at = NOW()\n            RETURNING value\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "value",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Varchar"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "fc38afa1fb91cb10594f6e5a3c261ef8cc1775e01ccead3cf77e7889cdc27585"
+}

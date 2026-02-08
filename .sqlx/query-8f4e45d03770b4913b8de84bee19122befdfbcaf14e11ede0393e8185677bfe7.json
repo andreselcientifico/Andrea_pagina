@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE users\n            SET verified = true, \n                updated_at = Now(),\n                verification_token = NULL,\n                token_expiry = NULL\n            WHERE verification_token = $1\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "8f4e45d03770b4913b8de84bee19122befdfbcaf14e11ede0393e8185677bfe7"
+}

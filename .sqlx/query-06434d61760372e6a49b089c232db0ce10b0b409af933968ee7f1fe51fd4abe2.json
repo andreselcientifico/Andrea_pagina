@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE course_progress\n            SET completed_lessons = $1,\n                progress_percentage = $2,\n                last_accessed = NOW(),\n                updated_at = NOW()\n            WHERE user_id = $3 AND course_id = $4\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Float4",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "06434d61760372e6a49b089c232db0ce10b0b409af933968ee7f1fe51fd4abe2"
+}

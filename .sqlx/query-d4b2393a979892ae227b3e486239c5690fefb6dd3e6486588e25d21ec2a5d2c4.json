@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO user_lesson_progress (id, user_id, lesson_id, is_completed, progress, last_accessed)\n            VALUES ($1, $2, $3, $4, $5, NOW())\n            ON CONFLICT (user_id, lesson_id)\n            DO UPDATE SET\n                is_completed = $4,\n                progress = $5,\n                last_accessed = NOW(),\n                updated_at = NOW(),\n                completed_at = CASE WHEN $4 = true THEN NOW() ELSE user_lesson_progress.completed_at END\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Bool",
+        "Float8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d4b2393a979892ae227b3e486239c5690fefb6dd3e6486588e25d21ec2a5d2c4"
+}

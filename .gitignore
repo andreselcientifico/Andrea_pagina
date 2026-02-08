@@ -20,4 +20,3 @@ cert.*
 key.*
 *.pem
 dist/*
-.sqlx/*
