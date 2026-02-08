@@ -12,4 +12,4 @@ cmds = [
 ]
 
 [start]
-cmd = './target/release/andrea_pagina'
+cmd = './server-exec'
