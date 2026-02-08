@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ['bun','cargo', 'gcc']
+nixPkgs = ['bun', 'rustup', 'gcc', 'pkg-config', 'openssl']
 
 [phases.build]
 dependsOn = ['setup']
@@ -11,4 +11,4 @@ cmds = [
 ]
 
 [start]
-cmd = './target/release/andrea_pagina'
+cmd = './target/release/pagina_andrea_vallenato'
