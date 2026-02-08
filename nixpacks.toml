@@ -8,8 +8,8 @@ cmds = [
     'cd vallenato-acordeon-maestro && bun install && bun run build',
     'mkdir -p dist',
     'cp -r vallenato-acordeon-maestro/dist/* ./dist/',
-    'cargo build --release'
+    'cargo build --release && cp $(find ./target/release -maxdepth 1 -type f -executable -not -name "*.d") ./server-exec'
 ]
 
 [start]
-cmd = './server-exec'
+cmd = 'chmod +x ./server-exec && ./server-exec'
