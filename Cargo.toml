@@ -1,7 +1,7 @@
 [package]
-name = "andrea_pagina"
+name = "pagina_andrea_vallenato"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 actix-cors = "0.7.1"
