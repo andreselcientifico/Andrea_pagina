@@ -120,7 +120,12 @@ async fn main() -> std::io::Result<()> {
             );
         }
     };
-    let db: DBClient = DBClient::new(pool);
+    let db: DBClient = DBClient::new(pool.clone());
+    log::info!("Ejecutando migraciones...");
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("No se pudieron ejecutar las migraciones");
     let paypal_client = PayPalClient::new(
         config.paypal_client_id.clone(),
         config.paypal_secret.clone(),
