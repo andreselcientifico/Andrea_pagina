@@ -1,0 +1,14 @@
+[phases.setup]
+nixPkgs = ['bun','cargo', 'gcc']
+
+[phases.build]
+dependsOn = ['setup']
+cmds = [
+    'cd vallenato-acordeon-maestro && bun install && bun run build',
+    'mkdir -p ../dist',
+    'cp -r dist/* ../dist/', 
+    'cd .. && cargo build --release'
+]
+
+[start]
+cmd = './target/release/andrea_pagina'
