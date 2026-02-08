@@ -25,8 +25,17 @@ impl Config {
         let database_url = env::var("DATABASE_URL").expect("DATABASE_URL no está seteada");
         let paypal_api_mode = env::var("PAYPAL_API_MODE").unwrap_or("https://api-m.sandbox.paypal.com".to_string());
         let jwt_maxage = env::var("JWT_MAXAGE").unwrap_or("3600".to_string()).parse().unwrap_or(3600);
-        let private_key = fs::read("private.pem").expect("No se pudo leer private.pem");
-        let public_key = fs::read("public.pem").expect("No se pudo leer public.pem");
+        
+        // --- MANEJO DE LLAVES (Híbrido: Variable de entorno o Archivo) ---
+        let private_key = env::var("JWT_PRIVATE_KEY")
+            .map(|s| s.into_bytes())
+            .unwrap_or_else(|_| fs::read("private.pem").expect("No se encontró JWT_PRIVATE_KEY en env ni el archivo private.pem"));
+
+        let public_key = env::var("JWT_PUBLIC_KEY")
+            .map(|s| s.into_bytes())
+            .unwrap_or_else(|_| fs::read("public.pem").expect("No se encontró JWT_PUBLIC_KEY en env ni el archivo public.pem"));
+        // ----------------------------------------------------------------
+        
         let encoding_key = EncodingKey::from_rsa_pem(&private_key).expect("Error al construir Encodingkey");
         let decoding_key = DecodingKey::from_rsa_pem(&public_key).expect("Error al construir DecodingKey");
         let paypal_client_id = env::var("PAYPAL_API_CLIENT_ID").expect("PAYPAL_API_CLIENT_ID no definido");
