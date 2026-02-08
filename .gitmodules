@@ -1,0 +1,3 @@
+[submodule "vallenato-acordeon-maestro"]
+	path = vallenato-acordeon-maestro
+	url = git@github.com:andreselcientifico/vallenato-acordeon-maestro.git
