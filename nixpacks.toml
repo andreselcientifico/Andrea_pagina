@@ -7,7 +7,7 @@ cmds = [
     'cd vallenato-acordeon-maestro && bun install && bun run build',
     'mkdir -p dist',
     'cp -r vallenato-acordeon-maestro/dist/* ./dist/',
-    'cd .. && cargo build --release'
+    'cargo build --release'
 ]
 
 [start]
