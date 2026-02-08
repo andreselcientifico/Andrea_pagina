@@ -14,13 +14,23 @@ use crate::{
 
 
 pub async fn get_me(
-    user: ReqData<JWTAuthMiddleware>
-) ->  impl Responder {
+    app_state: Data<Arc<AppState>>,
+    auth: ReqData<JWTAuthMiddleware>,
+) -> impl Responder {
+    let user_id = auth.claims.sub;
+
+    let user = app_state
+        .db_client
+        .get_user(Some(user_id), None, None, None)
+        .await
+        .unwrap()
+        .expect("Usuario no encontrado");
+
     HttpResponse::Ok().json(UserResponseDto {
         status: "success".into(),
         data: UserData {
-            user: FilterUserDto::filter_user(&user.user),
-        }
+            user: FilterUserDto::filter_user(&user),
+        },
     })
 }
 
@@ -64,7 +74,7 @@ pub async fn update_user_name(
         .get::<JWTAuthMiddleware>()
         .ok_or_else(|| HttpError::unauthorized("Usuario no autenticado".to_string()))?;
 
-    let user_id = user_data.user.id;
+    let user_id = user_data.claims.sub;
     let result = app_state.db_client.
         update_user_name(user_id.clone(), &body.name)
         .await
@@ -93,7 +103,7 @@ pub async fn update_user_role(
         .get::<JWTAuthMiddleware>()
         .ok_or_else(|| HttpError::unauthorized("Usuario no autenticado".to_string()))?;
 
-    let user_id = user_data.user.id;
+    let user_id = user_data.claims.sub;
     let result = app_state.db_client
         .update_user_role(user_id.clone(), body.role)
         .await
@@ -122,7 +132,7 @@ pub async fn update_user_password(
         .get::<JWTAuthMiddleware>()
         .ok_or_else(|| HttpError::unauthorized("Usuario no autenticado".to_string()))?;
 
-    let user_id = user_data.user.id;
+    let user_id = user_data.claims.sub;
     let result = app_state.db_client
         .get_user(Some(user_id.clone()), None, None, None)
         .await
@@ -169,7 +179,7 @@ pub async fn update_notification_settings(
         .get::<JWTAuthMiddleware>()
         .ok_or_else(|| HttpError::unauthorized("Usuario no autenticado".to_string()))?;
 
-    let user_id = user_data.user.id;
+    let user_id = user_data.claims.sub;
     
     app_state.db_client
         .update_notification_settings(

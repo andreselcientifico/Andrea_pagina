@@ -1,17 +1,24 @@
-use jsonwebtoken::{decode, Validation, DecodingKey};
+use jsonwebtoken::{decode, Validation, DecodingKey, Algorithm};
 use serde::{Serialize, Deserialize};
 use std::fs;
-use jsonwebtoken::Algorithm::RS256;
-use chrono::Utc;
+use chrono::{Utc};
+use crate::{models::models::UserRole, utils::token::TokenClaims};
+use uuid::Uuid;
 
-use crate::utils::token::TokenClaims;
-
-/// Datos dentro del token JWT
 #[derive(Debug, Serialize, Deserialize, Clone)]
-struct Claims {
-    sub: String, // subject (user id)
-    exp: usize,  // expiration time as unix timestamp
+pub struct UserJwtData {
+    pub sub: Uuid,           // user id
+    pub role: UserRole,        // rol del usuario
+    pub exp: usize,          // expiración
+    pub iat: usize,          // issued at
 }
+
+impl UserJwtData {
+    pub fn id(&self) -> Uuid {
+        self.sub
+    }
+}
+
 
 #[allow(dead_code)]
 pub fn is_premium(claims: &TokenClaims) -> bool {
@@ -21,15 +28,26 @@ pub fn is_premium(claims: &TokenClaims) -> bool {
     }
 }
 
-/// Verificar y decodificar Token JWT
-pub fn verify_jwt(token: &str) -> Option<String> {
-    let public_key_pem = fs::read("public.pem").expect("Error leyendo public_key.pem");
-    match decode::<Claims>(
+/// ===============================
+/// Verificar y decodificar JWT
+/// ===============================
+pub fn verify_jwt(token: &str) -> Option<UserJwtData> {
+    // Leer clave pública
+    let public_key_pem = fs::read("public.pem")
+        .expect("Error leyendo public.pem");
+
+    let validation = Validation::new(Algorithm::RS256);
+
+    match decode::<UserJwtData>(
         token,
-        &DecodingKey::from_rsa_pem(&public_key_pem).expect("Clave pública inválida"),
-        &Validation::new(RS256),
+        &DecodingKey::from_rsa_pem(&public_key_pem)
+            .expect("Clave pública inválida"),
+        &validation,
     ) {
-        Ok(data) => Some(data.claims.sub),
-        Err(_) => None,
+        Ok(data) => Some(data.claims),
+        Err(err) => {
+            log::warn!("JWT inválido: {}", err);
+            None
+        }
     }
 }

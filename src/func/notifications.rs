@@ -48,7 +48,7 @@ pub async fn send_bulk_email(
         .get::<JWTAuthMiddleware>()
         .ok_or_else(|| HttpError::unauthorized("Usuario no autenticado".to_string()))?;
 
-    if user_data.user.role != UserRole::Admin {
+    if user_data.claims.role != UserRole::Admin {
         return Err(HttpError::forbidden("Solo administradores pueden enviar correos masivos".to_string()));
     }
 
@@ -126,7 +126,7 @@ pub async fn get_notification_recipients_count(
         .get::<JWTAuthMiddleware>()
         .ok_or_else(|| HttpError::unauthorized("Usuario no autenticado".to_string()))?;
 
-    if user_data.user.role != UserRole::Admin {
+    if user_data.claims.role != UserRole::Admin {
         return Err(HttpError::forbidden("Solo administradores pueden ver esta información".to_string()));
     }
 

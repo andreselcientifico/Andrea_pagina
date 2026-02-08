@@ -119,9 +119,9 @@ pub async fn get_user_subscriptions(
     req: HttpRequest,
     app_state: web::Data<Arc<AppState>>,
 ) -> Result<HttpResponse, HttpError> {
-    let user = req.extensions().get::<JWTAuthMiddleware>().unwrap().user.clone();
+    let user = req.extensions().get::<JWTAuthMiddleware>().unwrap().claims.sub;
     let subscriptions = app_state.db_client
-        .get_user_subscriptions(user.id)
+        .get_user_subscriptions(user)
         .await
         .map_err(|e| HttpError::server_error(e.to_string()))?;
 
@@ -134,11 +134,11 @@ pub async fn cancel_subscription(
     app_state: web::Data<Arc<AppState>>,
     subscription_id: web::Path<Uuid>,
 ) -> Result<HttpResponse, HttpError> {
-    let user = req.extensions().get::<JWTAuthMiddleware>().unwrap().user.clone();
+    let user = req.extensions().get::<JWTAuthMiddleware>().unwrap().claims.sub;
 
     // Obtener la suscripción para verificar que pertenece al usuario
     let subscriptions = app_state.db_client
-        .get_user_subscriptions(user.id)
+        .get_user_subscriptions(user)
         .await
         .map_err(|e| HttpError::server_error(e.to_string()))?;
 

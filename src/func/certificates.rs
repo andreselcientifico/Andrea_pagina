@@ -17,7 +17,7 @@ pub async fn get_user_certificates_handler(
     let user_data = req.extensions().get::<JWTAuthMiddleware>()
         .ok_or_else(|| HttpError::unauthorized("Usuario no autenticado".to_string()))?.clone();
 
-    let certificates = app_state.db_client.get_user_certificates(user_data.user.id).await
+    let certificates = app_state.db_client.get_user_certificates(user_data.claims.sub).await
         .map_err(|e| HttpError::server_error(e.to_string()))?;
 
     Ok(HttpResponse::Ok().json(certificates))
@@ -36,7 +36,7 @@ pub async fn get_certificate_detail_handler(
         .map_err(|e| HttpError::server_error(e.to_string()))?
         .ok_or(HttpError::not_found("Certificado no encontrado".to_string()))?;
 
-    if certificate.user_id != user_data.user.id {
+    if certificate.user_id != user_data.claims.sub {
         return Err(HttpError::forbidden("No tienes permiso para ver este certificado".to_string()));
     }
 
@@ -59,7 +59,7 @@ pub async fn download_certificate_handler(
         })?
         .ok_or(HttpError::not_found("Certificado no encontrado".to_string()))?;
 
-    if certificate.user_id != user_data.user.id {
+    if certificate.user_id != user_data.claims.sub {
         return Err(HttpError::forbidden("No tienes permiso para descargar este certificado".to_string()));
     }
 

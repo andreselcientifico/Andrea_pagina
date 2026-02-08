@@ -8,24 +8,23 @@ use std::pin::Pin;
 
 
 use crate::{
-    AppState, auth::auth::verify_jwt, db::db::{UserExt, CoursePurchaseExt, SubscriptionExt}, errors::error::{ErrorMessage, HttpError}, models::models::{User, UserRole}, utils::token::{TokenClaims, decode_token}
+    AppState, auth::auth::{UserJwtData, verify_jwt}, db::db::{CoursePurchaseExt, SubscriptionExt}, errors::error::{ErrorMessage, HttpError}, models::models::{UserRole}
 };
 
 /// Estructura que contendrá al usuario autenticado
 #[derive(Debug, Clone)]
 pub struct JWTAuthMiddleware {
-    pub user: User,
+    pub claims: UserJwtData,
 }
 
 /// Middleware principal de autenticación JWT
 pub struct AuthMiddlewareFactory {
-    pub app_state: Arc<AppState>,
 }
 
 impl AuthMiddlewareFactory {
     /// Middleware solo para autenticación
-    pub fn new(app_state: Arc<AppState>) -> Self {
-        Self { app_state }
+    pub fn new() -> Self {
+        Self {}
     }
 }
 
@@ -43,14 +42,12 @@ where
     fn new_transform(&self, service: S) -> Self::Future {
         ready(Ok(AuthMiddleware {
             service: Rc::new(service),
-            app_state: self.app_state.clone(),
         }))
     }
 }
 
 pub struct AuthMiddleware<S> {
-    service: Rc<S>,
-    app_state: Arc<AppState>,
+    service: Rc<S>
 }
 
 impl<S, B> Service<ServiceRequest> for AuthMiddleware<S>
@@ -65,7 +62,6 @@ where
     forward_ready!(service);
 
     fn call(&self,  req: ServiceRequest) -> Self::Future {
-        let app_state = self.app_state.clone();
         let srv = self.service.clone();
 
         Box::pin(async move {
@@ -101,41 +97,19 @@ where
                 }
             };
 
-            // ============================
+            // ===============================
             // 3. VALIDAR JWT
-            // ============================
-            let user_id = match verify_jwt(&token) {
-                Some(id) => id,
+            // ===============================
+            let claims = match verify_jwt(&token) {
+                Some(c) => c,
                 None => {
                     let err = HttpError::unauthorized(ErrorMessage::InvalidToken.to_string());
-                    return Err(actix_web::error::ErrorUnauthorized(err.to_string()));
-                }
-            };
-
-            let user_id = match Uuid::parse_str(&user_id) {
-                Ok(id) => id,
-                Err(_) => {
-                    let err = HttpError::unauthorized(ErrorMessage::InvalidToken.to_string());
-                    return Err(actix_web::error::ErrorUnauthorized(err.to_string()));
-                }
-            };
-
-            // Buscar usuario en la base de datos
-            let user = app_state.db_client
-                .get_user(Some(user_id), None, None, None)
-                .await
-                .map_err(|_| actix_web::error::ErrorUnauthorized("Usuario no encontrado"))?;
-
-            let user = match user {
-                Some(u) => u,
-                None => {
-                    let err = HttpError::unauthorized(ErrorMessage::UserNoLongerExist.to_string());
                     return Err(actix_web::error::ErrorUnauthorized(err.to_string()));
                 }
             };
 
             // Guardar usuario autenticado en la request
-            req.extensions_mut().insert(JWTAuthMiddleware { user });
+            req.extensions_mut().insert(JWTAuthMiddleware { claims });
 
              // ============================
             // 4. CONTINUAR PIPELINE
@@ -229,33 +203,12 @@ where
 
 // 🔹 Ejemplo básico de extracción de rol (puedes adaptarlo a tu JWT o base de datos)
 fn extract_user_role(req: &ServiceRequest) -> UserRole {
-    let app_data = req.app_data::<actix_web::web::Data<Arc<AppState>>>();
-    if app_data.is_none() {
-        return UserRole::User;
-    }
-
-    let app_state = app_data.unwrap().as_ref();
-
-    let cookie = req.cookie("token");
-    if cookie.is_none() {
-        return UserRole::User;
-    }
-
-    let token = cookie.unwrap().value().to_string();
-
-    let decoded = decode_token(
-        token,
-        app_state.env.decoding_key.clone()
-    );
-
-    if decoded.is_err() {
-        return UserRole::User;
-    }
-
-    let claims = decoded.unwrap();
-
-    claims.role
+    req.extensions()
+        .get::<JWTAuthMiddleware>()
+        .map(|auth| auth.claims.role.clone())
+        .unwrap_or(UserRole::User)
 }
+
 
 
 
@@ -323,17 +276,26 @@ where
         async move {
             let app_data = req.app_data::<Data<Arc<AppState>>>().unwrap();
             let db_client = &app_data.db_client;
-            let claims = extract_token_claims(&req, app_data.clone());
+            let claims = {
+                let extensions = req.extensions();
+                extensions
+                    .get::<JWTAuthMiddleware>()
+                    .map(|auth| auth.claims.clone())
+            };
 
-            if claims.is_none() {
-                let (req, _) = req.into_parts();
-                let res = HttpResponse::Unauthorized()
-                    .json(serde_json::json!({"error": "Token missing or invalid"}))
-                    .map_into_right_body();
-                return Ok(ServiceResponse::new(req, res));
-            }
+            let claims = match claims {
+                Some(claims) => claims,
+                None => {
+                    let (req, _) = req.into_parts();
+                    let res = HttpResponse::Unauthorized()
+                        .json(serde_json::json!({ "error": "Unauthorized" }))
+                        .map_into_right_body();
 
-            let claims = claims.unwrap();
+                    return Ok(ServiceResponse::new(req, res));
+                }
+            };
+
+
             let mut allowed = false;
 
             // Revisar cada requisito de acceso
@@ -389,22 +351,4 @@ where
         }
         .boxed_local()
     }
-}
-
-/// 🔹 Igual que `extract_user_role` pero devuelve todos los claims
-fn extract_token_claims(req: &ServiceRequest, app_data: Data<Arc<AppState>>) -> Option<TokenClaims> {
-    let app_state = app_data.as_ref();
-
-    let token = req.cookie("token")
-        .map(|c| c.value().to_string())
-        .or_else(|| {
-            req.headers()
-                .get(actix_web::http::header::AUTHORIZATION)
-                .and_then(|v| v.to_str().ok())
-                .and_then(|v| v.strip_prefix("Bearer "))
-                .map(|s| s.to_string())
-        })?;
-
-    let decoded = crate::utils::token::decode_token(token, app_state.env.decoding_key.clone()).ok()?;
-    Some(decoded)
 }

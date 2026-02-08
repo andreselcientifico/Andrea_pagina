@@ -31,14 +31,14 @@ pub async fn create_lesson_comment(
 
     // 2️⃣ Crear el comentario (esto debe COMMITTEAR internamente)
     let comment = app_state.db_client
-        .create_lesson_comment(course_id, auth.user.id, body.content)
+        .create_lesson_comment(course_id, auth.claims.sub, body.content)
         .await
         .map_err(|e| HttpError::server_error(e.to_string()))?;
 
     // 3️⃣ Verificar y otorgar logros por comentarios
     // Usar EXACTAMENTE el trigger definido en la tabla achievement
     if let Err(err) = app_state.db_client
-        .check_and_award_achievements(auth.user.id, "comments_created", None)
+        .check_and_award_achievements(auth.claims.sub, "comments_created", None)
         .await
     {
         // No rompemos la request, pero sí registramos el error
@@ -89,7 +89,7 @@ pub async fn create_or_update_rating(
         .map_err(|e| HttpError::bad_request(e.to_string()))?;
 
     app_state.db_client
-        .create_or_update_rating(course_id, _auth.user.id, body.rating).await
+        .create_or_update_rating(course_id, _auth.claims.sub, body.rating).await
         .map_err(|e| HttpError::server_error(e.to_string()))?;
 
     Ok(HttpResponse::Ok().json(()))
@@ -104,7 +104,7 @@ pub async fn get_rating(
         .map_err(|e| HttpError::bad_request(e.to_string()))?;
 
     let rating = app_state.db_client
-        .get_rating(course_id, Some(_auth.user.id)).await
+        .get_rating(course_id, Some(_auth.claims.sub)).await
         .map_err(|e| 
             {   
                 log::debug!("get_course_with_videos_preview error: {:?}", e);
@@ -167,7 +167,7 @@ pub async fn get_course_with_modules(
         .map_err(|e| HttpError::bad_request(e.to_string()))?;
 
     let course = app_state.db_client
-        .get_course_with_videos(course_id,Some( _auth.user.id))
+        .get_course_with_videos(course_id,Some( _auth.claims.sub))
         .await
         .map_err(|e| HttpError::server_error(e.to_string()))?;
 
@@ -187,7 +187,7 @@ pub async fn get_course_with_modules_preview(
         .map_err(|e| HttpError::bad_request(e.to_string()))?;
 
     let course = app_state.db_client
-        .get_course_with_videos_preview(course_id,Some( _auth.user.id))
+        .get_course_with_videos_preview(course_id,Some( _auth.claims.sub))
         .await
         .map_err(|e| 
             {
@@ -351,7 +351,7 @@ pub async fn update_lesson_progress(
 ) -> Result<HttpResponse, HttpError> {
     log::debug!("ejecutando update_lesson_progress");
     let  (_,lesson_id) = path.into_inner();
-    let user_id = user.user.id;
+    let user_id = user.claims.sub;
 
     let lesson_uuid = Uuid::parse_str(&lesson_id)
         .map_err(|_| HttpError::bad_request("ID de lección inválido".to_string()))?;

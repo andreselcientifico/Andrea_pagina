@@ -1,9 +1,9 @@
 use actix_web::{ 
-    HttpMessage, HttpRequest, HttpResponse, cookie::{Cookie, SameSite}, get, post, put, web::{ Data, Json, Query}
+    HttpMessage, HttpRequest, HttpResponse, cookie::{Cookie, SameSite}, get, http::header, post, put, web::{ Data, Json, Query}
 };
 use std::sync::Arc;
 use validator::Validate;
-use crate::db::db::{CourseExt, CoursePurchaseExt, PasswordResetTokenExt, SubscriptionExt, UserAchievementExt, UserExt};
+use crate::{auth::auth::{UserJwtData,verify_jwt}, db::db::{CourseExt, CoursePurchaseExt, PasswordResetTokenExt, SubscriptionExt, UserAchievementExt, UserExt}};
 use serde_json::{json};
 use chrono::{ Duration, Utc };
 use uuid::Uuid;
@@ -26,7 +26,7 @@ pub async fn get_user_courses_api(
         .get::<JWTAuthMiddleware>()
         .ok_or_else(|| HttpError::unauthorized("Usuario no autenticado".to_string()))?;
 
-    let user_id = user_data.user.id;
+    let user_id = user_data.claims.sub;
 
     let courses = app_state.db_client.get_user_purchased_courses(user_id)
         .await
@@ -42,18 +42,31 @@ pub async fn get_user_courses_api(
     })))
 }
 
+fn get_optional_user(req: &HttpRequest) -> Option<UserJwtData> {
+    let token = req
+        .cookie("token")
+        .map(|c| c.value().to_string())
+        .or_else(|| {
+            req.headers()
+                .get(header::AUTHORIZATION)
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.strip_prefix("Bearer "))
+                .map(|s| s.to_string())
+        })?;
+
+    verify_jwt(&token)
+}
+
+
 #[get("/courses-page")]
 pub async fn get_courses_page(
     app_state: Data<Arc<AppState>>,
     req: HttpRequest,
 ) -> Result<HttpResponse, HttpError> {
 
-    let user = req
-        .extensions()
-        .get::<JWTAuthMiddleware>()
-        .map(|u| u.user.clone());
+    let user = get_optional_user(&req);
 
-    let user_id = user.as_ref().map(|u| u.id);
+    let user_id = user.as_ref().map(|u| u.id());
 
     let courses = app_state
         .db_client
@@ -339,7 +352,7 @@ pub async fn get_user_profile(req: HttpRequest, app_state: Data<Arc<AppState>>) 
     // Verifica si el middleware JWT añadió los datos del usuario autenticado
     match req.extensions().get::<JWTAuthMiddleware>() {
         Some(user_data) => {
-            let user_id = user_data.user.id;
+            let user_id = user_data.claims.sub;
 
             // Utilizar la consulta unificada
             let profile_data = app_state.db_client
@@ -368,7 +381,7 @@ pub async fn update_user_profile(
 ) -> Result<HttpResponse, HttpError> {
     match req.extensions().get::<JWTAuthMiddleware>() {
         Some(user_data) => {
-            let user_id = user_data.user.id;
+            let user_id = user_data.claims.sub;
 
             let updated_user = app_state.db_client
                 .update_user_profile(

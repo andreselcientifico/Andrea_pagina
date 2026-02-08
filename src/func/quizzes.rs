@@ -51,7 +51,7 @@ pub async fn submit_quiz_handler(
     let quiz_id = path.into_inner();
     let user_data = req.extensions().get::<JWTAuthMiddleware>()
         .ok_or_else(|| HttpError::unauthorized("Usuario no autenticado".to_string()))?.clone();
-    let user_id = user_data.user.id;
+    let user_id = user_data.claims.sub;
 
     // 1. Fetch Quiz details (pass percentage)
     let quiz = app_state.db_client.get_quiz(quiz_id).await
@@ -156,7 +156,7 @@ pub async fn get_user_attempts_handler(
     let user_data = req.extensions().get::<JWTAuthMiddleware>()
         .ok_or_else(|| HttpError::unauthorized("Usuario no autenticado".to_string()))?.clone();
     
-    let attempts = app_state.db_client.get_user_attempts(user_data.user.id, quiz_id).await
+    let attempts = app_state.db_client.get_user_attempts(user_data.claims.sub, quiz_id).await
         .map_err(|e| HttpError::server_error(e.to_string()))?;
 
     Ok(HttpResponse::Ok().json(attempts))
@@ -175,7 +175,7 @@ pub async fn get_attempt_detail_handler(
         .map_err(|e| HttpError::server_error(e.to_string()))?
         .ok_or(HttpError::not_found("Intento no encontrado".to_string()))?;
 
-    if attempt.user_id != user_data.user.id {
+    if attempt.user_id != user_data.claims.sub {
          return Err(HttpError::forbidden("No tienes permiso para ver este intento".to_string()));
     }
 

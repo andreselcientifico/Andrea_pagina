@@ -488,7 +488,7 @@ async fn capture_order(
     user: ReqData<JWTAuthMiddleware>,
 ) -> HttpResponse {
     let order_id = path.into_inner().0;
-    let user_id = user.user.id;
+    let user_id = user.claims.sub;
     let access_token = get_paypal_token(&app_state).await;
 
     let res =match  app_state.client
@@ -583,7 +583,7 @@ async fn verify_subscription(
     user: ReqData<JWTAuthMiddleware>,
 ) -> HttpResponse {
     let subscription_id = path.into_inner();
-    let user_id = user.user.id;
+    let user_id = user.claims.sub;
 
     let access_token = get_paypal_token(&app_state).await;
 

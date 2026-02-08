@@ -177,13 +177,15 @@ async fn main() -> std::io::Result<()> {
                     .service(course_scope())
                     .service(
                         scope("")
-                            .wrap(AuthMiddlewareFactory::new(app_state.clone()))
+                            .wrap(AuthMiddlewareFactory::new())
                             .service(global_scope())
                     )
             )
             .service(Files::new("/assets", &assets_path)) 
-            .service(Files::new("/", &static_path).index_file("index.html"))
-            .default_service(web::route().to(index_fallback))
+            .service(Files::new("/", &static_path)
+                        .index_file("index.html")
+                        .default_handler(web::to(index_fallback)
+                    ))
     })
         .workers(2)
         // .bind_openssl("127.0.0.1:8000", builder)?
