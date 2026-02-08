@@ -15,12 +15,6 @@ pub struct CreateSubscriptionPlanRequest {
     pub trial_days: Option<i32>,
 }
 
-#[derive(Deserialize)]
-pub struct SubscribeRequest {
-    pub user_id: Uuid,
-    pub plan_id: String,
-}
-
 // Crear un plan de suscripción (solo admin)
 pub async fn create_subscription_plan(
     app_state: web::Data<Arc<AppState>>,

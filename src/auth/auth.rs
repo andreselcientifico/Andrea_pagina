@@ -1,9 +1,9 @@
 use jsonwebtoken::{decode, Validation, DecodingKey, Algorithm};
 use serde::{Serialize, Deserialize};
 use std::fs;
-use chrono::{Utc};
-use crate::{models::models::UserRole, utils::token::TokenClaims};
 use uuid::Uuid;
+
+use crate::models::models::UserRole;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UserJwtData {
@@ -16,15 +16,6 @@ pub struct UserJwtData {
 impl UserJwtData {
     pub fn id(&self) -> Uuid {
         self.sub
-    }
-}
-
-
-
-pub fn is_premium(claims: &TokenClaims) -> bool {
-    match claims.subscription_expires_at {
-        Some(ts) => ts > Utc::now().timestamp(),
-        None => false,
     }
 }
 

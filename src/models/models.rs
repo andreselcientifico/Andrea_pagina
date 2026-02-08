@@ -55,28 +55,6 @@ pub struct User {
     pub subscription_expires_at: Option<DateTime<Utc>>, 
 }
 
-
-#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
-pub struct UserSettings {
-    pub id: Uuid,
-    #[serde(rename = "userId")]
-    pub user_id: Uuid,
-    #[serde(rename = "emailNotifications")]
-    pub email_notifications: bool,
-    #[serde(rename = "pushNotifications")]
-    pub push_notifications: bool,
-    #[serde(rename = "courseReminders")]
-    pub course_reminders: bool,
-    #[serde(rename = "newContent")]
-    pub new_content: bool,
-    #[serde(rename = "twoFactorEnabled")]
-    pub two_factor_enabled: bool,
-    #[serde(rename = "createdAt")]
-    pub created_at: DateTime<Utc>,
-    #[serde(rename = "updatedAt")]
-    pub updated_at: DateTime<Utc>,
-}
-
 // ===================== //
 // CURSOS Y PROGRESO
 // ===================== //
@@ -244,13 +222,6 @@ pub struct Subscription {
 // ===================== //
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct UserWithSettings {
-    pub user: User,
-    pub settings: Option<UserSettings>,
-}
-
-
-#[derive(Debug, Serialize, Deserialize)]
 pub struct UserCourseWithProgress {
     pub user_course: UserCourse,
     pub progress: Option<CourseProgress>,
@@ -261,17 +232,6 @@ pub struct UserCourseWithProgress {
 pub struct UserWithAchievements {
     pub user: User,
     pub achievements: Vec<UserAchievement>,
-}
-
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct FullUserProfile {
-    pub user: User,
-    pub settings: Option<UserSettings>,
-    pub courses: Vec<UserCourseWithProgress>,
-    pub achievements: Vec<UserAchievement>,
-    pub notifications: Vec<Notification>,
-    pub subscriptions: Vec<Subscription>,
 }
 
 #[derive(Debug, Clone, sqlx::FromRow, Serialize, Deserialize)]
@@ -286,47 +246,6 @@ pub struct Payment {
     pub created_at: DateTime<Utc>,
     pub updated_at: Option<DateTime<Utc>>,
 }
-
-// #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
-// pub struct UserLessonProgress {
-//     pub id: Uuid,
-//     #[serde(rename = "userId")]
-//     pub user_id: Uuid,
-//     #[serde(rename = "lessonId")]
-//     pub lesson_id: Uuid,
-//     #[serde(rename = "isCompleted")]
-//     pub is_completed: bool,
-//     #[serde(rename = "startedAt")]
-//     pub started_at: DateTime<Utc>,
-//     #[serde(rename = "completedAt")]
-//     pub completed_at: Option<DateTime<Utc>>,
-//     #[serde(rename = "progress")]
-//     pub progress: Option<f64>,
-//     #[serde(rename = "lastAccessed")]
-//     pub last_accessed: DateTime<Utc>,
-//     #[serde(rename = "createdAt")]
-//     pub created_at: DateTime<Utc>,
-//     #[serde(rename = "updatedAt")]
-//     pub updated_at: DateTime<Utc>,
-// }
-
-// #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
-// pub struct CourseComment {
-//     pub id: Uuid,
-//     pub course_id: Uuid,
-//     pub user_id: Uuid,
-//     pub content: String,
-//     pub created_at: DateTime<Utc>,
-// }
-
-// #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
-// pub struct LessonComment {
-//     pub id: Uuid,
-//     pub lesson_id: Uuid,
-//     pub user_id: Uuid,
-//     pub content: String,
-//     pub created_at: DateTime<Utc>,
-// }
 
 // ===================== //
 // TOKENS DE RESET DE CONTRASEÑA
@@ -348,34 +267,12 @@ pub struct PasswordResetToken {
 // ===================== //
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
-pub struct Quiz {
-    pub id: Uuid,
-    pub lesson_id: Uuid,
-    pub title: String,
-    pub description: Option<String>,
-    pub pass_percentage: f64,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Question {
     pub id: Uuid,
     pub quiz_id: Uuid,
     pub question: String,
     pub description: Option<String>,
     pub explanation: Option<String>,
-    pub order: i32,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
-pub struct QuestionOption {
-    pub id: Uuid,
-    pub question_id: Uuid,
-    pub text: String,
-    pub is_correct: bool,
     pub order: i32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,

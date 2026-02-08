@@ -3,7 +3,7 @@ use actix_web::{
 };
 use std::sync::Arc;
 use validator::Validate;
-use crate::{auth::auth::{UserJwtData,verify_jwt}, db::db::{CourseExt, CoursePurchaseExt, PasswordResetTokenExt, SubscriptionExt, UserAchievementExt, UserExt}};
+use crate::{auth::auth::{UserJwtData,verify_jwt}, db::db::{CourseExt, CoursePurchaseExt, PasswordResetTokenExt, UserAchievementExt, UserExt}};
 use serde_json::{json};
 use chrono::{ Duration, Utc };
 use uuid::Uuid;

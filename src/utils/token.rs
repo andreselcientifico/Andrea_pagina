@@ -1,6 +1,6 @@
 use chrono::{Utc, Duration};
 use serde::{Serialize, Deserialize};
-use jsonwebtoken::{encode, decode, EncodingKey, DecodingKey, Header, Validation, Algorithm, errors::Error as JwtError};
+use jsonwebtoken::{encode, EncodingKey, Header, Algorithm, errors::Error as JwtError};
 use uuid::Uuid;
 
 use crate::models::models::UserRole;
@@ -33,15 +33,14 @@ pub fn create_token_rsa(user_id: Uuid, role:UserRole, subscription_expires_at: O
     )
 }
 
-
-pub fn decode_token<T: Into<String>>(token: T, secret: DecodingKey) -> Result<TokenClaims, JwtError> {
-    let token = token.into();
-    if token.is_empty() {
-        return Err(jsonwebtoken::errors::ErrorKind::InvalidToken.into());
-    }
-    Ok(decode::<TokenClaims>(
-        &token,
-        &secret,
-        &Validation::new(Algorithm::RS256),
-    )?.claims)
-}
+// pub fn decode_token<T: Into<String>>(token: T, secret: DecodingKey) -> Result<TokenClaims, JwtError> {
+//     let token = token.into();
+//     if token.is_empty() {
+//         return Err(jsonwebtoken::errors::ErrorKind::InvalidToken.into());
+//     }
+//     Ok(decode::<TokenClaims>(
+//         &token,
+//         &secret,
+//         &Validation::new(Algorithm::RS256),
+//     )?.claims)
+// }
