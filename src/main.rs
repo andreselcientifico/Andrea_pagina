@@ -28,9 +28,8 @@ use tokio::sync::RwLock;
 use db::db::DBClient;
 use sqlx::postgres::PgPoolOptions;
 use dotenvy;
-use middleware::middleware::AuthMiddlewareFactory;
 use crate::routes::routes::{ auth_scope, course_scope, global_scope };
-// use env_logger::Env;
+use env_logger::Env;
 //==================== //
 //      APP STATE
 // ==================== //
@@ -99,15 +98,7 @@ async fn main() -> std::io::Result<()> {
     if let Err(e) = dotenvy::dotenv() {
         log::warn!("No se cargó el archivo .env (esto es normal en producción): {}", e);
     }
-    // let current_dir = std::env::current_dir().expect("No se pudo obtener el directorio actual");
-    // env_logger::Builder::from_env(Env::default().default_filter_or("debug,actix_server=info")).init();
-
-    // let key_path = current_dir.join("key.pem");
-    // let cert_path = current_dir.join("cert.pem");
-
-    // let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
-    // builder.set_private_key_file(key_path, SslFiletype::PEM).expect("No se pudo leer key.pem");
-    // builder.set_certificate_chain_file(cert_path).expect("No se pudo leer cert.pem");
+    env_logger::Builder::from_env(Env::default().default_filter_or("debug,actix_server=info")).init();
 
     // Crear conexión a Postgres
     let config = Config::init();
@@ -163,7 +154,6 @@ async fn main() -> std::io::Result<()> {
         
         App::new()
             .app_data(Data::new(app_state.clone()))
-            // .wrap(Compress::default())
             .wrap(
                 actix_cors::Cors::default()
                     .allowed_origin("http://localhost:8000")
@@ -178,9 +168,7 @@ async fn main() -> std::io::Result<()> {
                     .service(auth_scope())
                     .service(course_scope())
                     .service(
-                        scope("")
-                            .wrap(AuthMiddlewareFactory::new())
-                            .service(global_scope())
+                        global_scope()
                     )
             )
             .service(Files::new("/assets", &assets_path)) 
@@ -190,7 +178,6 @@ async fn main() -> std::io::Result<()> {
                     ))
     })
         .workers(2)
-        // .bind_openssl("127.0.0.1:8000", builder)?
         .bind("0.0.0.0:8000")?
         .run().await
 }

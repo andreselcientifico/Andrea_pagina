@@ -1,7 +1,7 @@
 use actix_web::{dev::HttpServiceFactory, web::{resource, scope, get, put, post, delete}};
 use uuid::Uuid;
 
-use crate::func::handlers;
+use crate::{func::{handlers, quizzes::{create_quiz_handler, delete_quiz_handler, update_quiz_handler}}, middleware::middleware::AuthMiddlewareFactory};
 use crate::func::courses;
 use crate::func::payments;
 use crate::func::{
@@ -87,6 +87,7 @@ pub fn course_scope() -> impl HttpServiceFactory {
 
 pub fn global_scope() -> impl HttpServiceFactory {
     scope("/api")
+        .wrap(AuthMiddlewareFactory::new())
         .service(
             scope("/users")
                 .service(
@@ -160,7 +161,7 @@ pub fn global_scope() -> impl HttpServiceFactory {
                         .route(get().to(get_achievements))
                 )
                 .service(
-                    resource("")
+                    resource("create")
                         .route(post().to(create_achievement))
                         .wrap(RoleCheck::new(vec![UserRole::Admin])),
                 )
@@ -224,20 +225,30 @@ pub fn global_scope() -> impl HttpServiceFactory {
             scope("/quiz")
                 .service(
                     resource("/lesson/{lesson_id}")
-                    .route(get().to(get_quiz_by_lesson_handler))
+                        .route(get().to(get_quiz_by_lesson_handler))
                 )
                 .service(
-                    scope("/{quiz_id}")
-                        .route("/questions", get().to(get_quiz_questions_handler))
-                        .route("/submit", post().to(submit_quiz_handler))
-                        .route("/attempts", get().to(get_user_attempts_handler))
+                    resource("/{quiz_id}/questions")
+                        .route(get().to(get_quiz_questions_handler))
                 )
                 .service(
-                    scope("/edit")
+                    resource("/{quiz_id}/submit")
+                        .route(post().to(submit_quiz_handler))
+                )
+                .service(
+                    resource("/{quiz_id}/attempts")
+                        .route(get().to(get_user_attempts_handler))
+                )
+                .service(
+                    resource("/{quiz_id}")
+                        .route(put().to(update_quiz_handler))
+                        .route(delete().to(delete_quiz_handler))
                         .wrap(RoleCheck::new(vec![UserRole::Admin]))
-                        .route("/create", post().to(crate::func::quizzes::create_quiz_handler))
-                        .route("/{quiz_id}", put().to(crate::func::quizzes::update_quiz_handler))
-                        .route("/{quiz_id}", delete().to(crate::func::quizzes::delete_quiz_handler))
+                )
+                .service(
+                    resource("/edit/create")
+                        .route(post().to(create_quiz_handler))
+                        .wrap(RoleCheck::new(vec![UserRole::Admin]))
                 )
                 .service(
                     resource("/attempt/{attempt_id}")
@@ -247,7 +258,7 @@ pub fn global_scope() -> impl HttpServiceFactory {
         .service(
             scope("/certificates")
                 .service(
-                    resource("")
+                    resource("get")
                         .route(get().to(get_user_certificates_handler))
                 )
                 .service(
