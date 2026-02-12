@@ -158,6 +158,7 @@ async fn main() -> std::io::Result<()> {
                 actix_cors::Cors::default()
                     .allowed_origin("http://localhost:8000")
                     .allowed_origin("https://vallenatofemenino.com")
+                    .allowed_origin("https://paginaandrea-actixweb-yqoj6d-251f51-76-13-106-226.traefik.me")
                     .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
                     .allowed_headers(vec!["Content-Type", "Authorization"])
                     .supports_credentials()
