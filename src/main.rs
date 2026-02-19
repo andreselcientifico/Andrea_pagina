@@ -27,7 +27,7 @@ use crate::routes::routes::{auth_scope, course_scope, global_scope};
 use config::config::Config;
 use db::db::DBClient;
 use dotenvy;
-use env_logger::Env;
+// use env_logger::Env;
 use reqwest::Client;
 use serde_json::Value;
 use services::paypal_client::PayPalClient;
@@ -103,8 +103,7 @@ async fn main() -> std::io::Result<()> {
             e
         );
     }
-    env_logger::Builder::from_env(Env::default().default_filter_or("debug,actix_server=info"))
-        .init();
+    //env_logger::Builder::from_env(Env::default().default_filter_or("debug,actix_server=info")).init();
 
     // Crear conexión a Postgres
     let config = Config::init();
