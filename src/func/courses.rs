@@ -280,8 +280,6 @@ pub async fn create_course(
                 tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
             }
         }
-        
-        log::info!("Course creation notifications sent for: {}", course_title);
     });
 
     Ok(HttpResponse::Created().json(course))

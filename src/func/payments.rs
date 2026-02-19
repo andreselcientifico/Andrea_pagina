@@ -1,18 +1,18 @@
-use std::{sync::Arc};
 use actix_web::{
-    HttpRequest, HttpResponse, post, web::{self, Data, Path, ReqData}
+    HttpRequest, HttpResponse, post,
+    web::{self, Data, Path, ReqData},
 };
-use serde_json::{Value, json};
 use chrono::{Duration, Utc};
+use serde_json::{Value, json};
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
-    AppState, 
-    CachedToken, 
-    config::dtos::ProductDTO, 
-    db::db::{CourseExt, CoursePurchaseExt, SubscriptionExt}, 
-    errors::error::HttpError, 
-    middleware::middleware::JWTAuthMiddleware
+    AppState, CachedToken,
+    config::dtos::ProductDTO,
+    db::db::{CourseExt, CoursePurchaseExt, SubscriptionExt},
+    errors::error::HttpError,
+    middleware::middleware::JWTAuthMiddleware,
 };
 
 // ===================== //
@@ -36,15 +36,13 @@ pub async fn get_paypal_token(state: &AppState) -> String {
         }
     } // 🔓 el lock de lectura se libera aquí
 
-     // =========================
+    // =========================
     // 2️⃣ Solicitar nuevo token (SIN lock)
     // =========================
-    let resp = state.client
+    let resp = state
+        .client
         .post(format!("{}/v1/oauth2/token", state.env.paypal_api_mode))
-        .basic_auth(
-            &state.env.paypal_client_id,
-            Some(&state.env.paypal_secret)
-        )
+        .basic_auth(&state.env.paypal_client_id, Some(&state.env.paypal_secret))
         .form(&[("grant_type", "client_credentials")])
         .send()
         .await
@@ -84,45 +82,51 @@ pub async fn get_paypal_token(state: &AppState) -> String {
         *cache = Some(new_token);
     }
 
-
     access_token
 }
-
 
 pub async fn create_product(
     app_state: Data<Arc<AppState>>,
     body: ProductDTO,
 ) -> Result<String, HttpError> {
-       let access_token = get_paypal_token(&app_state).await;
+    let access_token = get_paypal_token(&app_state).await;
 
-       let res = app_state.client
-           .post(format!("{}/v1/catalogs/products", app_state.env.paypal_api_mode))
-           .bearer_auth(access_token)
-           .header("Content-Type", "application/json")
-           .json(&body)
-           .send()
-           .await
-           .map_err(|e | HttpError::server_error(e.to_string()))?;
-
-        let status = res.status();
-        let text = res.text().await.unwrap_or_default();
-
-        log::debug!("PayPal status: {} ", status);
-        log::debug!("PayPal body: {} ", text);
-
-        if !status.is_success() {
-            let error_message = format!("PayPal API error: {} - {}", status, text);
-            log::error!("{}", error_message);
-            return Err(HttpError::server_error(error_message));
-        }
-
-        let product_response: serde_json::Value = serde_json::from_str(&text)
+    let res = app_state
+        .client
+        .post(format!(
+            "{}/v1/catalogs/products",
+            app_state.env.paypal_api_mode
+        ))
+        .bearer_auth(access_token)
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await
         .map_err(|e| HttpError::server_error(e.to_string()))?;
-        let product_id = product_response.get("id").and_then(|v| v.as_str())
-                .ok_or_else(|| HttpError::server_error(format!("Invalid Paypal response: {}", product_response)))?
-                .to_string();
 
-        return Ok(product_id);
+    let status = res.status();
+    let text = res.text().await.unwrap_or_default();
+
+    log::debug!("PayPal status: {} ", status);
+    log::debug!("PayPal body: {} ", text);
+
+    if !status.is_success() {
+        let error_message = format!("PayPal API error: {} - {}", status, text);
+        log::error!("{}", error_message);
+        return Err(HttpError::server_error(error_message));
+    }
+
+    let product_response: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| HttpError::server_error(e.to_string()))?;
+    let product_id = product_response
+        .get("id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| {
+            HttpError::server_error(format!("Invalid Paypal response: {}", product_response))
+        })?
+        .to_string();
+
+    return Ok(product_id);
 }
 
 pub async fn paypal_webhook(
@@ -130,36 +134,63 @@ pub async fn paypal_webhook(
     body: web::Bytes,
     req: HttpRequest,
 ) -> Result<HttpResponse, HttpError> {
+    for (name, value) in req.headers().iter() {
+        if name.as_str().to_lowercase().starts_with("paypal") {
+            log::debug!("  {} = {:?}", name, value);
+        }
+    }
+
     // Extraer todas las cabeceras de firma que PayPal envía
     let transmission_id = req
         .headers()
         .get("PAYPAL-TRANSMISSION-ID")
         .and_then(|h| h.to_str().ok())
-        .ok_or_else(|| HttpError::bad_request("Missing PAYPAL-TRANSMISSION-ID"))?;
+        .ok_or_else(|| {
+            log::error!("❌ Missing PAYPAL-TRANSMISSION-ID header");
+            HttpError::bad_request("Missing PAYPAL-TRANSMISSION-ID")
+        })?;
 
     let transmission_sig = req
         .headers()
         .get("PAYPAL-TRANSMISSION-SIG")
         .and_then(|h| h.to_str().ok())
-        .ok_or_else(|| HttpError::bad_request("Missing PAYPAL-TRANSMISSION-SIG"))?;
+        .ok_or_else(|| {
+            log::error!("❌ Missing PAYPAL-TRANSMISSION-SIG header");
+            HttpError::bad_request("Missing PAYPAL-TRANSMISSION-SIG")
+        })?;
 
     let transmission_time = req
         .headers()
         .get("PAYPAL-TRANSMISSION-TIME")
         .and_then(|h| h.to_str().ok())
-        .ok_or_else(|| HttpError::bad_request("Missing PAYPAL-TRANSMISSION-TIME"))?;
+        .ok_or_else(|| {
+            log::error!("❌ Missing PAYPAL-TRANSMISSION-TIME header");
+            HttpError::bad_request("Missing PAYPAL-TRANSMISSION-TIME")
+        })?;
 
     let cert_url = req
         .headers()
         .get("PAYPAL-CERT-URL")
         .and_then(|h| h.to_str().ok())
-        .ok_or_else(|| HttpError::bad_request("Missing PAYPAL-CERT-URL"))?;
+        .ok_or_else(|| {
+            log::error!("❌ Missing PAYPAL-CERT-URL header");
+            HttpError::bad_request("Missing PAYPAL-CERT-URL")
+        })?;
 
     let auth_algo = req
         .headers()
         .get("PAYPAL-AUTH-ALGO")
         .and_then(|h| h.to_str().ok())
-        .ok_or_else(|| HttpError::bad_request("Missing PAYPAL-AUTH-ALGO"))?;
+        .ok_or_else(|| {
+            log::error!("❌ Missing PAYPAL-AUTH-ALGO header");
+            HttpError::bad_request("Missing PAYPAL-AUTH-ALGO")
+        })?;
+
+    log::debug!("  transmission_id: {}", transmission_id);
+    log::debug!(
+        "  webhook_id configured: {}",
+        app_state.env.paypal_webhook_id
+    );
 
     // Verificar la firma con tu función (más abajo)
     let is_verified = verify_paypal_webhook_signature(
@@ -170,12 +201,15 @@ pub async fn paypal_webhook(
         cert_url,
         auth_algo,
         &body,
-    ).await;
+    )
+    .await;
 
     if !is_verified {
+        log::error!("❌ PayPal webhook signature verification FAILED!");
         return Err(HttpError::bad_request("Invalid PayPal webhook signature"));
+    } else {
+        log::info!("✅ PayPal webhook signature verified successfully!");
     }
-
     let event: serde_json::Value = serde_json::from_slice(&body)
         .map_err(|e| HttpError::bad_request(format!("Invalid payload: {}", e)))?;
     log::info!("Received PayPal webhook event: {:?}", event);
@@ -184,27 +218,27 @@ pub async fn paypal_webhook(
         Some("PAYMENT.CAPTURE.COMPLETED") => {
             // Pago exitoso → concede acceso al curso
             log::info!("Payment completed event received.");
-             Ok(HttpResponse::Ok().finish())
+            Ok(HttpResponse::Ok().finish())
         }
         Some("PAYMENT.CAPTURE.DENIED") => {
             // Pago denegado
-             Ok(HttpResponse::Ok().finish())
+            Ok(HttpResponse::Ok().finish())
         }
         Some("PAYMENT.CAPTURE.PENDING") => {
             // Pago pendiente
-             Ok(HttpResponse::Ok().finish())
+            Ok(HttpResponse::Ok().finish())
         }
         Some("PAYMENT.CAPTURE.REFUNDED") => {
             // Reembolso de pago
-             Ok(HttpResponse::Ok().finish())
+            Ok(HttpResponse::Ok().finish())
         }
         Some("PAYMENT.CAPTURE.REVERSED") => {
             // Reversión de pago (disputa)
-             Ok(HttpResponse::Ok().finish())
+            Ok(HttpResponse::Ok().finish())
         }
         Some("CHECKOUT.ORDER.APPROVED") => {
             // Orden aprobada pero no capturada aún
-             Ok(HttpResponse::Ok().finish())
+            Ok(HttpResponse::Ok().finish())
         }
 
         /* --- SUSCRIPCIONES --- */
@@ -216,10 +250,20 @@ pub async fn paypal_webhook(
         Some("BILLING.SUBSCRIPTION.ACTIVATED") => {
             // Activar y setear end_time
             if let Some(sub_id) = event["resource"]["id"].as_str() {
-                app_state.db_client.update_subscription_end_time(sub_id).await
-                    .map_err(|e| HttpError::server_error(format!("Error updating subscription: {}", e)))?;
-                app_state.db_client.update_subscription_status(sub_id, true).await
-                    .map_err(|e| HttpError::server_error(format!("Error activating subscription: {}", e)))?;
+                app_state
+                    .db_client
+                    .update_subscription_end_time(sub_id)
+                    .await
+                    .map_err(|e| {
+                        HttpError::server_error(format!("Error updating subscription: {}", e))
+                    })?;
+                app_state
+                    .db_client
+                    .update_subscription_status(sub_id, true)
+                    .await
+                    .map_err(|e| {
+                        HttpError::server_error(format!("Error activating subscription: {}", e))
+                    })?;
             }
             log::info!("Subscription activated event received.");
             Ok(HttpResponse::Ok().finish())
@@ -230,10 +274,15 @@ pub async fn paypal_webhook(
             Ok(HttpResponse::Ok().finish())
         }
         Some("BILLING.SUBSCRIPTION.CANCELLED") => {
-            // Marcar como cancelada
+            // Marcar como no renovable - la suscripción sigue activa hasta end_time
             if let Some(sub_id) = event["resource"]["id"].as_str() {
-                app_state.db_client.update_subscription_status(sub_id, false).await
-                    .map_err(|e| HttpError::server_error(format!("Error cancelling subscription: {}", e)))?;
+                app_state
+                    .db_client
+                    .update_subscription_status(sub_id, false)
+                    .await
+                    .map_err(|e| {
+                        HttpError::server_error(format!("Error cancelling subscription: {}", e))
+                    })?;
             }
             log::info!("Subscription cancelled event received.");
             Ok(HttpResponse::Ok().finish())
@@ -241,8 +290,13 @@ pub async fn paypal_webhook(
         Some("BILLING.SUBSCRIPTION.EXPIRED") => {
             // Fin de suscripción
             if let Some(sub_id) = event["resource"]["id"].as_str() {
-                app_state.db_client.expire_subscription(sub_id).await
-                    .map_err(|e| HttpError::server_error(format!("Error expiring subscription: {}", e)))?;
+                app_state
+                    .db_client
+                    .expire_subscription(sub_id)
+                    .await
+                    .map_err(|e| {
+                        HttpError::server_error(format!("Error expiring subscription: {}", e))
+                    })?;
             }
             log::info!("Subscription expired event received.");
             Ok(HttpResponse::Ok().finish())
@@ -250,8 +304,13 @@ pub async fn paypal_webhook(
         Some("BILLING.SUBSCRIPTION.SUSPENDED") => {
             // Suspensión por pagos fallidos - desactivar
             if let Some(sub_id) = event["resource"]["id"].as_str() {
-                app_state.db_client.update_subscription_status(sub_id, false).await
-                    .map_err(|e| HttpError::server_error(format!("Error suspending subscription: {}", e)))?;
+                app_state
+                    .db_client
+                    .update_subscription_status(sub_id, false)
+                    .await
+                    .map_err(|e| {
+                        HttpError::server_error(format!("Error suspending subscription: {}", e))
+                    })?;
             }
             log::info!("Subscription suspended event received.");
             Ok(HttpResponse::Ok().finish())
@@ -264,8 +323,13 @@ pub async fn paypal_webhook(
         Some("PAYMENT.SALE.COMPLETED") => {
             // Pago de ciclo recurrente exitoso - extender end_time
             if let Some(sub_id) = event["resource"]["billing_agreement_id"].as_str() {
-                app_state.db_client.update_subscription_end_time(sub_id).await
-                    .map_err(|e| HttpError::server_error(format!("Error extending subscription: {}", e)))?;
+                app_state
+                    .db_client
+                    .update_subscription_end_time(sub_id)
+                    .await
+                    .map_err(|e| {
+                        HttpError::server_error(format!("Error extending subscription: {}", e))
+                    })?;
             }
             log::info!("Payment sale completed event received.");
             Ok(HttpResponse::Ok().finish())
@@ -273,8 +337,13 @@ pub async fn paypal_webhook(
         Some("PAYMENT.SALE.REFUNDED") => {
             // Reembolso - quizás cancelar
             if let Some(sub_id) = event["resource"]["billing_agreement_id"].as_str() {
-                app_state.db_client.update_subscription_status(sub_id, false).await
-                    .map_err(|e| HttpError::server_error(format!("Error refunding subscription: {}", e)))?;
+                app_state
+                    .db_client
+                    .update_subscription_status(sub_id, false)
+                    .await
+                    .map_err(|e| {
+                        HttpError::server_error(format!("Error refunding subscription: {}", e))
+                    })?;
             }
             log::info!("Payment sale refunded event received.");
             Ok(HttpResponse::Ok().finish())
@@ -282,8 +351,13 @@ pub async fn paypal_webhook(
         Some("PAYMENT.SALE.REVERSED") => {
             // Reversión - cancelar
             if let Some(sub_id) = event["resource"]["billing_agreement_id"].as_str() {
-                app_state.db_client.update_subscription_status(sub_id, false).await
-                    .map_err(|e| HttpError::server_error(format!("Error reversing subscription: {}", e)))?;
+                app_state
+                    .db_client
+                    .update_subscription_status(sub_id, false)
+                    .await
+                    .map_err(|e| {
+                        HttpError::server_error(format!("Error reversing subscription: {}", e))
+                    })?;
             }
             log::info!("Payment sale reversed event received.");
             Ok(HttpResponse::Ok().finish())
@@ -292,27 +366,22 @@ pub async fn paypal_webhook(
         /* --- OTROS EVENTOS GENERALES --- */
         Some("PAYMENT.ORDER.CANCELLED") => {
             // Orden cancelada antes de pago
-             Ok(HttpResponse::Ok().finish())
+            Ok(HttpResponse::Ok().finish())
         }
         Some("PAYMENT.AUTHORIZATION.CREATED") => {
             // Autorización de pago iniciada
-             Ok(HttpResponse::Ok().finish())
+            Ok(HttpResponse::Ok().finish())
         }
         Some("PAYMENT.AUTHORIZATION.VOIDED") => {
             // Autorización de pago anulada
-             Ok(HttpResponse::Ok().finish())
+            Ok(HttpResponse::Ok().finish())
         }
-        // _ => {
-        //     // Evento no manejado explícitamente
-        //      Ok(HttpResponse::Ok().finish())
-        // }
         _ => {
             log::info!("Unsupported event type: {:?}", event["event_type"]);
             Ok(HttpResponse::Ok().finish())
         }
     }
 }
-
 
 pub async fn verify_paypal_webhook_signature(
     app_state: &Data<Arc<AppState>>,
@@ -324,9 +393,13 @@ pub async fn verify_paypal_webhook_signature(
     body: &web::Bytes,
 ) -> bool {
     // Construye el JSON para PayPal
-    let webhook_event: serde_json::Value = match serde_json::from_slice(body) {
-        Ok(val) => val,
-        Err(_) => return false,
+    let body_str = std::str::from_utf8(body).unwrap_or("");
+    let raw_event = match serde_json::value::RawValue::from_string(body_str.to_string()) {
+        Ok(v) => v,
+        Err(e) => {
+            log::error!("❌ Error creando RawValue del body: {}", e);
+            return false;
+        }
     };
 
     #[derive(serde::Serialize)]
@@ -337,7 +410,7 @@ pub async fn verify_paypal_webhook_signature(
         auth_algo: &'a str,
         transmission_sig: &'a str,
         webhook_id: &'a str,
-        webhook_event: serde_json::Value,
+        webhook_event: &'a serde_json::value::RawValue,
     }
 
     let verify_body = VerifyRequest {
@@ -347,14 +420,18 @@ pub async fn verify_paypal_webhook_signature(
         auth_algo,
         transmission_sig,
         webhook_id: &app_state.env.paypal_webhook_id,
-        webhook_event,
+        webhook_event: &raw_event,
     };
 
     // Obtiene token OAuth2 para PayPal
     let token = get_paypal_token(&app_state).await;
 
     let client = reqwest::Client::new();
-    let url = format!("{}/v1/notifications/verify-webhook-signature", app_state.env.paypal_api_mode);
+    let url = format!(
+        "{}/v1/notifications/verify-webhook-signature",
+        app_state.env.paypal_api_mode
+    );
+    log::debug!("🔍 Sending verification request to: {}", url);
 
     let resp = match client
         .post(&url)
@@ -364,27 +441,25 @@ pub async fn verify_paypal_webhook_signature(
         .await
     {
         Ok(r) => r,
-        Err(_) => return false,
+        Err(e) => {
+            log::error!("❌ Failed to send verification request to PayPal: {}", e);
+            return false;
+        }
     };
 
     if let Ok(json) = resp.json::<serde_json::Value>().await {
-        if json.get("verification_status").and_then(|v| v.as_str()) == Some("SUCCESS") {
-            return true;
-        }
+        let status = json.get("verification_status").and_then(|v| v.as_str());
+        return status == Some("SUCCESS");
     }
+
     false
 }
-
 
 // ===================== //
 //   Crear orden
 // ===================== //
-pub async fn created_order(
-    state: Data<Arc<AppState>>, 
-    path: Path<(Uuid,)>,
-) -> HttpResponse {
+pub async fn created_order(state: Data<Arc<AppState>>, path: Path<(Uuid,)>) -> HttpResponse {
     let course_id = path.into_inner().0;
-    log::info!("creando orden");
     let course = match state.db_client.get_course(course_id).await {
         Ok(c) => c,
         Err(e) => {
@@ -393,7 +468,7 @@ pub async fn created_order(
         }
     };
     let invoice_id = Uuid::new_v4().to_string();
-    let (paypal_product_id , title, price) = match course {
+    let (paypal_product_id, title, price) = match course {
         Some(c) => (c.paypal_product_id.clone(), c.title.clone(), c.price),
         None => {
             log::error!("Curso no encontrado");
@@ -401,8 +476,7 @@ pub async fn created_order(
         }
     };
 
-    let body =
-        json!({
+    let body = json!({
         "intent": "CAPTURE",
         "payment_source": {
             "paypal": {
@@ -444,37 +518,37 @@ pub async fn created_order(
 
     let access_token = get_paypal_token(&state).await;
 
-    let res = state.client
+    let res = state
+        .client
         .post(format!("{}/v2/checkout/orders", state.env.paypal_api_mode))
         .bearer_auth(&access_token)
         .json(&body)
-        .send().await
+        .send()
+        .await
         .expect("Error al enviar la solicitud a PayPal");
 
     if res.status().is_client_error() || res.status().is_server_error() {
-        log::error!("Respuesta inválida de PayPal: {:?}", res);
-        return HttpResponse::InternalServerError().body("Error creating order");
+        let error_detail: Value = res.json().await.unwrap_or(json!({"error": "no detail"}));
+        log::error!("Detalle de PayPal: {:?}", error_detail);
+        return HttpResponse::InternalServerError().json(error_detail);
     }
 
     let response_json: Value = match res.json().await {
         Ok(v) => v,
         Err(_) => {
-            return HttpResponse::InternalServerError()
-                .body("Respuesta inválida de PayPal");
+            return HttpResponse::InternalServerError().body("Respuesta inválida de PayPal");
         }
     };
     let order_id = match response_json.get("id").and_then(|v| v.as_str()) {
         Some(id) => id.to_string(),
         None => {
             log::error!("PayPal no devolvió order id: {:?}", response_json);
-            return HttpResponse::InternalServerError()
-                .body("PayPal no devolvió order id");
+            return HttpResponse::InternalServerError().body("PayPal no devolvió order id");
         }
     };
 
     // Responder sólo con orderID
     HttpResponse::Ok().json(json!({ "id": order_id }))
-
 }
 
 // ===================== //
@@ -483,7 +557,7 @@ pub async fn created_order(
 
 #[post("/paypal/capture/{order_id}")]
 async fn capture_order(
-    path: Path<(String,)>, 
+    path: Path<(String,)>,
     app_state: Data<Arc<AppState>>,
     user: ReqData<JWTAuthMiddleware>,
 ) -> HttpResponse {
@@ -491,8 +565,12 @@ async fn capture_order(
     let user_id = user.claims.sub;
     let access_token = get_paypal_token(&app_state).await;
 
-    let res =match  app_state.client
-        .post(format!("{}/v2/checkout/orders/{}/capture", app_state.env.paypal_api_mode, order_id))
+    let res = match app_state
+        .client
+        .post(format!(
+            "{}/v2/checkout/orders/{}/capture",
+            app_state.env.paypal_api_mode, order_id
+        ))
         .bearer_auth(&access_token)
         .header("Content-Type", "application/json")
         .body("{}")
@@ -528,9 +606,9 @@ async fn capture_order(
     // Extraer el status de la respuesta de PayPal
     let status = data["status"].as_str().unwrap_or("").to_string();
     // Extraer el course_id del custom_id en purchase_units
-   let custom_id = data["purchase_units"][0]["payments"]["captures"][0]["custom_id"]
-    .as_str()
-    .unwrap_or("");
+    let custom_id = data["purchase_units"][0]["payments"]["captures"][0]["custom_id"]
+        .as_str()
+        .unwrap_or("");
     let course_id = match Uuid::parse_str(custom_id) {
         Ok(id) => id,
         Err(e) => {
@@ -547,15 +625,19 @@ async fn capture_order(
         None => 0,
     };
 
-     if status == "COMPLETED" {
-        match app_state.db_client.register_course_purchase(
-            user_id,
-            course_id,
-            order_id.clone(),
-            amount,
-            "paypal".to_string(),
-            status.clone(),
-        ).await {
+    if status == "COMPLETED" {
+        match app_state
+            .db_client
+            .register_course_purchase(
+                user_id,
+                course_id,
+                order_id.clone(),
+                amount,
+                "paypal".to_string(),
+                status.clone(),
+            )
+            .await
+        {
             Ok(_) => (),
             Err(e) => {
                 return HttpResponse::InternalServerError().json(json!({
@@ -587,11 +669,11 @@ async fn verify_subscription(
 
     let access_token = get_paypal_token(&app_state).await;
 
-    let res = app_state.client
+    let res = app_state
+        .client
         .get(format!(
             "{}/v1/billing/subscriptions/{}",
-            app_state.env.paypal_api_mode,
-            subscription_id
+            app_state.env.paypal_api_mode, subscription_id
         ))
         .bearer_auth(&access_token)
         .send()
@@ -624,12 +706,9 @@ async fn verify_subscription(
     let paypal_plan_id = data["plan_id"].as_str().unwrap_or("");
 
     // Guardar suscripción en DB
-    app_state.db_client
-        .create_subscription(
-            user_id,
-            &subscription_id,
-            &paypal_plan_id.to_string(),
-        )
+    app_state
+        .db_client
+        .create_subscription(user_id, &subscription_id, &paypal_plan_id.to_string())
         .await
         .map_err(|e| {
             log::error!("{}", e);

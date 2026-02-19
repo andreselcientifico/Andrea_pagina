@@ -1,35 +1,39 @@
-mod models;
-mod func;
 mod auth;
 mod config;
-mod test;
-mod errors;
 mod db;
-mod utils;
-mod middleware;
+mod errors;
+mod func;
 mod mail;
+mod middleware;
+mod models;
 mod routes;
 mod services;
+mod test;
+mod utils;
 
+use actix_files::Files;
+use actix_web::web::{post, resource, scope};
 use actix_web::{Responder, web};
-use actix_web::web::{ scope };
-use actix_files::{Files};
 use tera::{Context, Tera};
 // use actix_web::middleware::Compress;
-use actix_web::{ web::{ Data, Json }, App, HttpServer, HttpResponse };
-use chrono::{ DateTime, Utc };
+use actix_web::{
+    App, HttpResponse, HttpServer,
+    web::{Data, Json},
+};
+use chrono::{DateTime, Utc};
 // use openssl::ssl::{ SslAcceptor, SslFiletype, SslMethod };
+use crate::func::payments::paypal_webhook;
+use crate::routes::routes::{auth_scope, course_scope, global_scope};
 use config::config::Config;
+use db::db::DBClient;
+use dotenvy;
+use env_logger::Env;
 use reqwest::Client;
-use services::paypal_client::PayPalClient;
 use serde_json::Value;
+use services::paypal_client::PayPalClient;
+use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use db::db::DBClient;
-use sqlx::postgres::PgPoolOptions;
-use dotenvy;
-use crate::routes::routes::{ auth_scope, course_scope, global_scope };
-// use env_logger::Env;
 //==================== //
 //      APP STATE
 // ==================== //
@@ -63,12 +67,10 @@ pub async fn ping(Json(json): Json<Value>) -> impl Responder {
     }
 
     // Respuesta HTTP
-    HttpResponse::Ok().json(
-        serde_json::json!({
+    HttpResponse::Ok().json(serde_json::json!({
         "status": "ok",
         "message": "pong",
-    })
-    )
+    }))
 }
 
 // Esta función NO tiene macro. Se usa para rutas como /cursos o /perfil
@@ -96,25 +98,26 @@ async fn render_index(state: web::Data<Arc<AppState>>) -> HttpResponse {
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     if let Err(e) = dotenvy::dotenv() {
-        log::warn!("No se cargó el archivo .env (esto es normal en producción): {}", e);
+        log::warn!(
+            "No se cargó el archivo .env (esto es normal en producción): {}",
+            e
+        );
     }
-    // env_logger::Builder::from_env(Env::default().default_filter_or("debug,actix_server=info")).init();
+    env_logger::Builder::from_env(Env::default().default_filter_or("debug,actix_server=info"))
+        .init();
 
     // Crear conexión a Postgres
     let config = Config::init();
     let pool = match PgPoolOptions::new().connect(&config.database_url).await {
-        Ok(pool) => { pool }
+        Ok(pool) => pool,
         Err(err) => {
-            return Err(
-                std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "Database connection failed {}".replace("{}", &err.to_string())
-                )
-            );
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Database connection failed {}".replace("{}", &err.to_string()),
+            ));
         }
     };
     let db: DBClient = DBClient::new(pool.clone());
-    log::info!("Ejecutando migraciones...");
     sqlx::migrate!("./migrations")
         .run(&pool)
         .await
@@ -122,12 +125,11 @@ async fn main() -> std::io::Result<()> {
     let paypal_client = PayPalClient::new(
         config.paypal_client_id.clone(),
         config.paypal_secret.clone(),
-        config.paypal_api_mode.contains("sandbox")
-    ).await;
+        config.paypal_api_mode.contains("sandbox"),
+    )
+    .await;
 
-    let dist_path = std::env::current_dir()
-    .unwrap()
-    .join("dist");
+    let dist_path = std::env::current_dir().unwrap().join("dist");
 
     // 2. Inicializamos Tera vacío y añadimos el index.html manualmente
     let mut tera_md = Tera::default();
@@ -136,7 +138,9 @@ async fn main() -> std::io::Result<()> {
     let assets_path = format!("{}/assets", dist_path.clone().to_str().unwrap());
 
     if index_path.exists() {
-        tera_md.add_template_file(index_path, Some("index.html")).expect("Error al cargar index.html");
+        tera_md
+            .add_template_file(index_path, Some("index.html"))
+            .expect("Error al cargar index.html");
         log::info!("✅ index.html cargado correctamente en Tera");
     } else {
         log::error!("❌ NO SE ENCONTRÓ el archivo en: {:?}", index_path);
@@ -151,34 +155,45 @@ async fn main() -> std::io::Result<()> {
     };
     let app_state = Arc::new(state.clone());
     HttpServer::new(move || {
-        
         App::new()
             .app_data(Data::new(app_state.clone()))
             .wrap(
                 actix_cors::Cors::default()
                     .allowed_origin("http://localhost:8000")
                     .allowed_origin("https://vallenatofemenino.com")
-                    .allowed_origin("https://paginaandrea-actixweb-yqoj6d-251f51-76-13-106-226.traefik.me")
+                    .allowed_origin(
+                        "https://paginaandrea-actixweb-yqoj6d-251f51-76-13-106-226.traefik.me",
+                    )
+                    .allowed_origin("https://viewed-setup-rental-validation.trycloudflare.com")
                     .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
-                    .allowed_headers(vec!["Content-Type", "Authorization"])
+                    .allowed_headers(vec![
+                        "Content-Type",
+                        "Authorization",
+                        "PAYPAL-TRANSMISSION-ID",
+                        "PAYPAL-TRANSMISSION-SIG",
+                        "PAYPAL-TRANSMISSION-TIME",
+                        "PAYPAL-CERT-URL",
+                        "PAYPAL-AUTH-ALGO",
+                    ])
                     .supports_credentials()
-                    .max_age(3600)
+                    .max_age(3600),
             )
             .service(
                 scope("/back")
+                    .service(resource("/payments/webhooks/paypal").route(post().to(paypal_webhook)))
                     .service(auth_scope())
                     .service(course_scope())
-                    .service(
-                        global_scope()
-                    )
+                    .service(global_scope()),
             )
-            .service(Files::new("/assets", &assets_path)) 
-            .service(Files::new("/", &static_path)
-                        .index_file("index.html")
-                        .default_handler(web::to(index_fallback)
-                    ))
+            .service(Files::new("/assets", &assets_path))
+            .service(
+                Files::new("/", &static_path)
+                    .index_file("index.html")
+                    .default_handler(web::to(index_fallback)),
+            )
     })
-        .workers(2)
-        .bind("0.0.0.0:8000")?
-        .run().await
+    .workers(2)
+    .bind("0.0.0.0:8000")?
+    .run()
+    .await
 }

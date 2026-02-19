@@ -75,11 +75,14 @@ pub fn global_scope() -> impl HttpServiceFactory {
                         .wrap(RoleCheck::new(vec![UserRole::Admin])),
                 )
                 .service(resource("/name").route(put().to(update_user_name)))
-                .service(resource("/role").route(put().to(update_user_role)).wrap(RoleCheck::new(vec![UserRole::Admin])))
+                .service(
+                    resource("/role")
+                        .route(put().to(update_user_role))
+                        .wrap(RoleCheck::new(vec![UserRole::Admin])),
+                )
                 .service(resource("/change-password").route(put().to(update_user_password)))
                 .service(resource("/notifications").route(put().to(update_notification_settings))),
         )
-        .service(resource("/payments/webhooks/paypal").route(post().to(paypal_webhook)))
         .service(
             scope("/courses")
                 .service(resource("/edit").route(get().to(create_course)))

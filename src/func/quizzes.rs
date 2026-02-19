@@ -205,11 +205,9 @@ pub async fn create_quiz_handler(
     app_state: Data<Arc<AppState>>,
     body: Json<CreateQuizDto>,
 ) -> Result<HttpResponse, HttpError> {
-    log::info!("Creando quiz: {:?}", body);
     let dto = body.into_inner();
     let created = app_state.db_client.create_quiz_with_questions(dto).await
         .map_err(|e| HttpError::server_error(e.to_string()))?;
-    log::info!("Quiz creado: {:?}", created);
     Ok(HttpResponse::Created().json(created))
 }
 

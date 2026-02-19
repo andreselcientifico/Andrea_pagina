@@ -3565,6 +3565,11 @@ pub trait SubscriptionExt {
         subscription_id: Uuid,
     ) -> Result<(), Error>;
 
+    async fn cancel_subscription_by_paypal_id(
+        &self,
+        paypal_subscription_id: &str,
+    ) -> Result<(), Error>;
+
     async fn update_subscription_end_time(
         &self,
         paypal_subscription_id: &str,
@@ -3776,6 +3781,23 @@ impl SubscriptionExt for DBClient {
             e
         })?;
 
+        // Calcular end_time basado en duration_months del plan
+        let duration_months: Option<i32> = sqlx::query_scalar(
+            r#"
+            SELECT duration_months FROM subscription_plans WHERE paypal_plan_id = $1
+            "#,
+        )
+        .bind(plan_id)
+        .fetch_optional(&mut *tx)
+        .await.map_err(|e| {
+            log::error!("ERROR fetching plan duration: {}", e);
+            e
+        })?;
+
+        let end_time = duration_months.map(|months| {
+            now + chrono::Duration::days((months * 30) as i64)
+        });
+
         let subscription = sqlx::query_as::<_, Subscription>(
             r#"
             INSERT INTO subscription (
@@ -3786,20 +3808,22 @@ impl SubscriptionExt for DBClient {
                 plan_id, 
                 start_time, 
                 end_time, 
+                auto_renew,
                 created_at, 
                 updated_at
             )
-            VALUES ($1, $2, $3, true, $4, $5, NULL, $6, $7)
-            RETURNING id, user_id, paypal_subscription_id, status, plan_id, start_time, end_time, created_at, updated_at
+            VALUES ($1, $2, $3, true, $4, $5, $6, true, $7, $8)
+            RETURNING id, user_id, paypal_subscription_id, status, plan_id, start_time, end_time, auto_renew, created_at, updated_at
             "#,
         )
         .bind(id)        // $1
         .bind(user_id)   // $2
-        .bind(paypal_id) // $3 (Ya no es '')
+        .bind(paypal_id) // $3
         .bind(plan_id)   // $4
         .bind(now)       // $5 (start_time)
-        .bind(now)       // $6 (created_at)
-        .bind(now)       // $7 (updated_at)
+        .bind(end_time)  // $6 (end_time calculado)
+        .bind(now)       // $7 (created_at)
+        .bind(now)       // $8 (updated_at)
         .fetch_one(&mut *tx)
         .await
         .map_err(|e| {
@@ -3826,7 +3850,7 @@ impl SubscriptionExt for DBClient {
                 })?;
         let subscriptions = sqlx::query_as::<_, Subscription>(
             r#"
-            SELECT id, user_id, paypal_subscription_id, status, plan_id, start_time, end_time, created_at, updated_at
+            SELECT id, user_id, paypal_subscription_id, status, plan_id, start_time, end_time, auto_renew, created_at, updated_at
             FROM subscription
             WHERE user_id = $1
             ORDER BY created_at DESC
@@ -3857,14 +3881,49 @@ impl SubscriptionExt for DBClient {
                 })?;
         let now = Utc::now();
 
+        // Solo marcar auto_renew = false, la suscripción sigue activa hasta end_time
         sqlx::query(
             r#"
             UPDATE subscription
-            SET status = false, updated_at = $2
+            SET auto_renew = false, updated_at = $2
             WHERE id = $1
             "#,
         )
         .bind(subscription_id)
+        .bind(now)
+        .execute(&mut *tx)
+        .await.map_err(|e| {
+            log::error!("ERROR: {}", e);
+            e
+        })?;
+        tx.commit().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
+        Ok(())
+    }
+
+    async fn cancel_subscription_by_paypal_id(
+        &self,
+        paypal_subscription_id: &str,
+    ) -> Result<(), Error> {
+        let mut tx = self.pool.begin().await
+            .map_err(|e| {
+                    log::error!("Error: {}", e);
+                    e
+                })?;
+        let now = Utc::now();
+
+        // Solo marcar auto_renew = false desde webhook
+        sqlx::query(
+            r#"
+            UPDATE subscription
+            SET auto_renew = false, updated_at = $2
+            WHERE paypal_subscription_id = $1
+            "#,
+        )
+        .bind(paypal_subscription_id)
         .bind(now)
         .execute(&mut *tx)
         .await.map_err(|e| {
@@ -3904,13 +3963,13 @@ impl SubscriptionExt for DBClient {
         })?;
 
         if let Some(plan_id) = plan_id {
-            // Obtener duration_months del plan
+            // Obtener duration_months del plan usando paypal_plan_id
             let duration_months: Option<i32> = sqlx::query_scalar(
                 r#"
-                SELECT duration_months FROM subscription_plans WHERE id = $1
+                SELECT duration_months FROM subscription_plans WHERE paypal_plan_id = $1
                 "#,
             )
-            .bind(Uuid::parse_str(&plan_id).map_err(|_| Error::RowNotFound)?)
+            .bind(&plan_id)
             .fetch_optional(&mut *tx)
             .await.map_err(|e| {
                 log::error!("ERROR: {}", e);
@@ -4027,7 +4086,7 @@ impl SubscriptionExt for DBClient {
             r#"
             SELECT EXISTS(
                 SELECT 1 FROM subscription 
-                WHERE user_id = $1 AND end_time > NOW()
+                WHERE user_id = $1 AND status = true AND end_time > NOW()
             )
             "#,
         )
@@ -4565,7 +4624,6 @@ impl QuizExt for DBClient {
 
     async fn create_quiz_with_questions(&self, create_quiz: CreateQuizDto) -> Result<QuizResponseDto, Error> {
         let mut tx = self.pool.begin().await.map_err(|e| { log::error!("Error: {}", e); e })?;
-        log::info!("Creando quiz: {:?}", create_quiz);
         let quiz_id = Uuid::new_v4();
         let lesson_id = Uuid::parse_str(&create_quiz.lesson_id)
             .map_err(|e| { log::error!("UUID parse error: {}", e); e });
@@ -4613,10 +4671,8 @@ impl QuizExt for DBClient {
         }
 
         tx.commit().await.map_err(|e| { log::error!("Error: {}", e); e })?;
-        log::info!("Quiz creado: {:?}", quiz_id);
         // Return created quiz DTO
         let res = self.get_quiz(quiz_id).await?;
-        log::info!("Quiz creado: {:?}", res);
         match res {
             Some(q) => Ok(q),
             None => Err(sqlx::Error::RowNotFound),

@@ -1,6 +1,6 @@
+use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use chrono::{DateTime, Utc, NaiveDate};
 
 // ===================== //
 //    ROLES DE USUARIO
@@ -35,7 +35,7 @@ pub struct User {
     pub location: Option<String>,
     pub bio: Option<String>,
     #[serde(rename = "birthDate")]
-    pub birth_date: Option<NaiveDate>, 
+    pub birth_date: Option<NaiveDate>,
     pub verified: bool,
     pub password: String,
     pub role: UserRole,
@@ -47,12 +47,11 @@ pub struct User {
     pub course_reminders: bool,
     pub new_content: bool,
     #[serde(rename = "createdAt")]
-    pub created_at
-: Option<DateTime<Utc>>,
+    pub created_at: Option<DateTime<Utc>>,
     #[serde(rename = "updatedAt")]
     pub updated_at: Option<DateTime<Utc>>,
     #[serde(rename = "subscriptionExpiresAt")]
-    pub subscription_expires_at: Option<DateTime<Utc>>, 
+    pub subscription_expires_at: Option<DateTime<Utc>>,
 }
 
 // ===================== //
@@ -62,21 +61,20 @@ pub struct User {
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow, PartialEq)]
 pub struct Course {
     pub id: Uuid,
-    pub title: String,                       
-    pub description: String,                  
-    pub long_description: Option<String>,    
-    pub level: String,                        
+    pub title: String,
+    pub description: String,
+    pub long_description: Option<String>,
+    pub level: String,
     pub price: f64,
-    pub duration: Option<String>,            
-    pub students: i32,                                              
-    pub image: Option<String>,                
-    pub category: String,                     
+    pub duration: Option<String>,
+    pub students: i32,
+    pub image: Option<String>,
+    pub category: String,
     pub features: Option<serde_json::Value>,
     pub paypal_product_id: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
-
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow, Clone)]
 pub struct Module {
@@ -100,8 +98,6 @@ pub struct Lesson {
     pub order: i32, // orden dentro del módulo
 }
 
-
-
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct UserCourse {
     pub id: Uuid,
@@ -118,7 +114,6 @@ pub struct UserCourse {
     #[serde(rename = "updatedAt")]
     pub updated_at: DateTime<Utc>,
 }
-
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct CourseProgress {
@@ -156,11 +151,10 @@ pub struct Achievement {
     pub description: Option<String>,
     pub icon: Option<String>,
     pub trigger_type: String, // 'course_completed', 'lesson_completed', etc.
-    pub trigger_value: i32, // cantidad necesaria
+    pub trigger_value: i32,   // cantidad necesaria
     pub active: bool,
     pub created_at: DateTime<Utc>,
 }
-
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct UserAchievement {
@@ -213,6 +207,7 @@ pub struct Subscription {
     pub plan_id: Option<String>,
     pub start_time: DateTime<Utc>,
     pub end_time: Option<DateTime<Utc>>,
+    pub auto_renew: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -226,7 +221,6 @@ pub struct UserCourseWithProgress {
     pub user_course: UserCourse,
     pub progress: Option<CourseProgress>,
 }
-
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UserWithAchievements {
@@ -288,7 +282,7 @@ pub struct QuizAttempt {
     pub percentage: f64,
     pub passed: bool,
     pub submitted_at: DateTime<Utc>,
-    pub answers: Option<serde_json::Value>, 
+    pub answers: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
