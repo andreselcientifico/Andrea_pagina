@@ -21,7 +21,7 @@ use crate::func::{
         get_courses_with_modules, get_lesson_comments, get_rating, update_course,
         update_lesson_progress,
     },
-    payments::{created_order, paypal_webhook},
+    payments::{created_order},
     quizzes::{
         get_attempt_detail_handler, get_quiz_by_lesson_handler, get_quiz_questions_handler,
         get_user_attempts_handler, submit_quiz_handler,

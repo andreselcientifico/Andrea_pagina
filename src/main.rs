@@ -13,7 +13,7 @@ mod utils;
 
 use actix_files::Files;
 use actix_web::web::{post, resource, scope};
-use actix_web::{Responder, web};
+use actix_web::{Responder, web, middleware::Compress};
 use tera::{Context, Tera};
 use actix_web::{
     App, HttpResponse, HttpServer,
@@ -154,6 +154,7 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(Data::new(app_state.clone()))
+            .wrap(Compress::default())
             .wrap(
                 actix_cors::Cors::default()
                     .allowed_origin("http://localhost:8000")
@@ -181,7 +182,9 @@ async fn main() -> std::io::Result<()> {
                     .service(course_scope())
                     .service(global_scope()),
             )
-            .service(Files::new("/assets", &assets_path))
+            .service(
+                Files::new("/assets", &assets_path)
+            )
             .service(
                 Files::new("/", &static_path)
                     .index_file("index.html")
