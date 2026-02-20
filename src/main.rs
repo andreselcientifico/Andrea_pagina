@@ -15,13 +15,11 @@ use actix_files::Files;
 use actix_web::web::{post, resource, scope};
 use actix_web::{Responder, web};
 use tera::{Context, Tera};
-// use actix_web::middleware::Compress;
 use actix_web::{
     App, HttpResponse, HttpServer,
     web::{Data, Json},
 };
 use chrono::{DateTime, Utc};
-// use openssl::ssl::{ SslAcceptor, SslFiletype, SslMethod };
 use crate::func::payments::paypal_webhook;
 use crate::routes::routes::{auth_scope, course_scope, global_scope};
 use config::config::Config;
@@ -163,7 +161,6 @@ async fn main() -> std::io::Result<()> {
                     .allowed_origin(
                         "https://paginaandrea-actixweb-yqoj6d-251f51-76-13-106-226.traefik.me",
                     )
-                    .allowed_origin("https://viewed-setup-rental-validation.trycloudflare.com")
                     .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
                     .allowed_headers(vec![
                         "Content-Type",
