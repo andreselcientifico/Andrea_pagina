@@ -12,6 +12,8 @@ mod test;
 mod utils;
 
 use actix_files::Files;
+use actix_service::Service;
+use actix_web::http::header::{CACHE_CONTROL, HeaderValue};
 use actix_web::web::{post, resource, scope};
 use actix_web::{Responder, web, middleware::Compress};
 use tera::{Context, Tera};
@@ -88,6 +90,20 @@ async fn render_index(state: web::Data<Arc<AppState>>) -> HttpResponse {
             HttpResponse::InternalServerError().body("Error interno")
         }
     }
+}
+
+fn looks_hashed_asset(path: &str) -> bool {
+    // heurística simple: "-<8+ chars>." antes de la extensión
+    // ejemplos: photo1-DzpscOSY.webp, index-gcXjKfVp.js
+    // no ejemplos: photo1-medium.webp, hero-background-medium.webp
+    let p = path.rsplit('/').next().unwrap_or(path);
+    // busca un guion y al menos 8 chars antes del punto final
+    if let Some((_, rest)) = p.split_once('-') {
+        if let Some((maybe_hash, _ext)) = rest.split_once('.') {
+            return maybe_hash.len() >= 8 && maybe_hash.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' );
+        }
+    }
+    false
 }
 
 // ===================== //
@@ -182,13 +198,45 @@ async fn main() -> std::io::Result<()> {
                     .service(course_scope())
                     .service(global_scope()),
             )
+            .wrap_fn(|req, srv| {
+                let path = req.path().to_string();
+                let is_assets = path.starts_with("/assets/");
+                let is_index_html = path == "/" || !path.starts_with("/back"); // tu SPA fallback
+
+                let fut = srv.call(req);
+                async move {
+                    let mut res = fut.await?;
+
+                    let cc = if is_assets {
+                        if looks_hashed_asset(&path) {
+                            "public, max-age=31536000, immutable"
+                        } else {
+                            "public, max-age=3600, must-revalidate"
+                        }
+                    } else if is_index_html {
+                        // importante para SPA: el HTML no debe quedarse pegado
+                        "no-cache"
+                    } else {
+                        "public, max-age=0"
+                    };
+
+                    res.headers_mut().insert(CACHE_CONTROL, HeaderValue::from_static(cc));
+                    Ok(res)
+                }
+            })
+            // /assets
             .service(
                 Files::new("/assets", &assets_path)
+                    .use_etag(true)
+                    .use_last_modified(true)
             )
+            // /
             .service(
                 Files::new("/", &static_path)
                     .index_file("index.html")
-                    .default_handler(web::to(index_fallback)),
+                    .default_handler(web::to(index_fallback))
+                    .use_etag(true)
+                    .use_last_modified(true)
             )
     })
     .workers(2)
