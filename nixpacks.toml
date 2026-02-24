@@ -1,6 +1,7 @@
 [phases.setup]
 nixPkgs = ['bun', 'rustup', 'gcc', 'pkg-config', 'openssl']
 nixLibs = ['stdenv.cc.cc.lib']
+aptPkgs = ['libssl-dev']
 
 [phases.build]
 dependsOn = ['setup']
@@ -9,7 +10,7 @@ cmds = [
     'cd vallenato-acordeon-maestro && bun install && bun run build',
     'mkdir -p dist',
     'cp -r vallenato-acordeon-maestro/dist/* ./dist/',
-    'cargo build --release && cp $(find ./target/release -maxdepth 1 -type f -executable -not -name "*.d") ./server-exec'
+    'cargo build --release && cp $(find ./target/release -maxdepth 1 -type f -executable -not -name "*.d") ./server-exec',
 ]
 
 [start]
