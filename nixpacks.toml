@@ -5,7 +5,7 @@ nixPkgs = ['bun', 'rustup', 'gcc', 'pkg-config', 'openssl']
 dependsOn = ['setup']
 cmds = [
     'rustup default stable',
-    'sudo apt-get install -y libstdc++6',
+    'bun upgrade',
     'cd vallenato-acordeon-maestro && bun install && bun run build',
     'mkdir -p dist',
     'cp -r vallenato-acordeon-maestro/dist/* ./dist/',
