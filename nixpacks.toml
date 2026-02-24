@@ -1,5 +1,6 @@
 [phases.setup]
-nixPkgs = ['bun', 'rustup', 'gcc', 'pkg-config', 'openssl', 'stdenv-linux']
+nixPkgs = ['bun', 'rustup', 'gcc']
+aptPkgs = ['pkg-config', 'libssl-dev', 'libstdc++6']
 
 [phases.build]
 dependsOn = ['setup']
