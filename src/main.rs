@@ -11,22 +11,22 @@ mod services;
 mod test;
 mod utils;
 
+use crate::func::payments::paypal_webhook;
+use crate::routes::routes::{auth_scope, course_scope, global_scope};
 use actix_files::Files;
 use actix_service::Service;
 use actix_web::http::header::{CACHE_CONTROL, HeaderValue};
 use actix_web::web::{post, resource, scope};
-use actix_web::{Responder, web, middleware::Compress};
-use tera::{Context, Tera};
 use actix_web::{
     App, HttpResponse, HttpServer,
     web::{Data, Json},
 };
+use actix_web::{Responder, middleware::Compress, web};
 use chrono::{DateTime, Utc};
-use crate::func::payments::paypal_webhook;
-use crate::routes::routes::{auth_scope, course_scope, global_scope};
 use config::config::Config;
 use db::db::DBClient;
 use dotenvy;
+use tera::{Context, Tera};
 // use env_logger::Env;
 use reqwest::Client;
 use serde_json::Value;
@@ -100,7 +100,10 @@ fn looks_hashed_asset(path: &str) -> bool {
     // busca un guion y al menos 8 chars antes del punto final
     if let Some((_, rest)) = p.split_once('-') {
         if let Some((maybe_hash, _ext)) = rest.split_once('.') {
-            return maybe_hash.len() >= 8 && maybe_hash.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' );
+            return maybe_hash.len() >= 8
+                && maybe_hash
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_');
         }
     }
     false
@@ -220,7 +223,8 @@ async fn main() -> std::io::Result<()> {
                         "public, max-age=0"
                     };
 
-                    res.headers_mut().insert(CACHE_CONTROL, HeaderValue::from_static(cc));
+                    res.headers_mut()
+                        .insert(CACHE_CONTROL, HeaderValue::from_static(cc));
                     Ok(res)
                 }
             })
@@ -228,7 +232,7 @@ async fn main() -> std::io::Result<()> {
             .service(
                 Files::new("/assets", &assets_path)
                     .use_etag(true)
-                    .use_last_modified(true)
+                    .use_last_modified(true),
             )
             // /
             .service(
@@ -236,7 +240,7 @@ async fn main() -> std::io::Result<()> {
                     .index_file("index.html")
                     .default_handler(web::to(index_fallback))
                     .use_etag(true)
-                    .use_last_modified(true)
+                    .use_last_modified(true),
             )
     })
     .workers(2)
