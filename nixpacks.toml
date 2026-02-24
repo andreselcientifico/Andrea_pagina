@@ -1,11 +1,11 @@
 [phases.setup]
-nixPkgs = ['bun', 'rustup', 'gcc']
-aptPkgs = ['pkg-config', 'libssl-dev', 'libstdc++6']
+nixPkgs = ['bun', 'rustup', 'gcc', 'pkg-config', 'openssl']
 
 [phases.build]
 dependsOn = ['setup']
 cmds = [
     'rustup default stable',
+    'sudo apt-get install -y libstdc++6',
     'cd vallenato-acordeon-maestro && bun install && bun run build',
     'mkdir -p dist',
     'cp -r vallenato-acordeon-maestro/dist/* ./dist/',
