@@ -7,6 +7,7 @@ use std::env;
 use std::str::FromStr;
 use uuid::Uuid;
 
+#[allow(dead_code)]
 pub async fn get_test_pool() -> (Pool<Postgres>, String) {
     // Load .env variables
     // We assume .env is in the root of the project

@@ -13,15 +13,6 @@ pub enum UserRole {
     User,
 }
 
-impl UserRole {
-    pub fn to_str(&self) -> &str {
-        match self {
-            UserRole::Admin => "admin",
-            UserRole::User => "user",
-        }
-    }
-}
-
 // ===================== //
 // MODELOS PRINCIPALES
 // ===================== //
@@ -115,31 +106,6 @@ pub struct UserCourse {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
-pub struct CourseProgress {
-    pub id: Uuid,
-    #[serde(rename = "userId")]
-    pub user_id: Uuid,
-    #[serde(rename = "courseId")]
-    pub course_id: Uuid,
-    #[serde(rename = "progressPercentage")]
-    pub progress_percentage: f32,
-    #[serde(rename = "totalLessons")]
-    pub total_lessons: Option<i32>,
-    #[serde(rename = "completedLessons")]
-    pub completed_lessons: Option<i32>,
-    #[serde(rename = "lastAccessed")]
-    pub last_accessed: DateTime<Utc>,
-    #[serde(rename = "startedAt")]
-    pub started_at: DateTime<Utc>,
-    #[serde(rename = "completedAt")]
-    pub completed_at: Option<DateTime<Utc>>,
-    #[serde(rename = "createdAt")]
-    pub created_at: DateTime<Utc>,
-    #[serde(rename = "updatedAt")]
-    pub updated_at: DateTime<Utc>,
-}
-
 // ===================== //
 // LOGROS
 // ===================== //
@@ -165,20 +131,6 @@ pub struct UserAchievement {
     pub earned_at: Option<DateTime<Utc>>,
 }
 
-// ===================== //
-// NOTIFICACIONES
-// ===================== //
-
-#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
-pub struct Notification {
-    pub id: Uuid,
-    pub user_id: Uuid,
-    pub title: String,
-    pub message: String,
-    pub sent_via: String,
-    pub sent_at: DateTime<Utc>,
-    pub read: bool,
-}
 
 // ===================== //
 // PLANES DE SUSCRIPCIÓN
@@ -216,18 +168,6 @@ pub struct Subscription {
 // RELACIONES ENTRE MODELOS
 // ===================== //
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct UserCourseWithProgress {
-    pub user_course: UserCourse,
-    pub progress: Option<CourseProgress>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct UserWithAchievements {
-    pub user: User,
-    pub achievements: Vec<UserAchievement>,
-}
-
 #[derive(Debug, Clone, sqlx::FromRow, Serialize, Deserialize)]
 pub struct Payment {
     pub id: Uuid,
@@ -254,6 +194,13 @@ pub struct PasswordResetToken {
     pub expires_at: DateTime<Utc>,
     pub used: bool,
     pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ForgotPasswordResult {
+    pub user_name: String,
+    pub user_email: String,
+    pub token_data: PasswordResetToken,
 }
 
 // ===================== //

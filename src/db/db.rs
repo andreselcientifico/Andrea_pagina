@@ -8,10 +8,10 @@ use uuid::Uuid;
 
 use crate::{
     config::dtos::{
-        CertificateDto, CommentLessonDto, CoursePageRow, CourseRatingDto, CourseWithModulesDto, CreateCourseDTO, CreateLessonDTO, CreateModuleDTO, CreateQuizDto, LessonDto, ModuleWithLessonsDto, OptionDto, QuestionDto, QuizAttemptDto, QuizResponseDto, UpdateCourseDTO, UserAchievementDto, UserCourseDto, UserProfileData
+        CertificateDto, CommentLessonDto, CoursePageRow, CourseRatingDto, CourseWithModulesDto, CreateCourseDTO, CreateLessonDTO, CreateModuleDTO, CreateQuizDto, LessonDto, ModuleWithLessonsDto, OptionDto, QuestionDto, QuizAttemptDto, QuizResponseDto, UpdateCourseDTO, UserCourseDto, UserProfileData, VerifiedUserData
     },
     models::models::{
-        Achievement, Certificate, Course, CourseProgress, Lesson, Module, Notification, PasswordResetToken, Payment, Question, QuizAttempt, Subscription, SubscriptionPlan, User, UserAchievement, UserCourse, UserRole
+        Achievement, Certificate, Course, ForgotPasswordResult, Lesson, Module, PasswordResetToken, Payment, Question, QuizAttempt, Subscription, SubscriptionPlan, User, UserAchievement, UserCourse, UserRole
     }
 };
 
@@ -83,19 +83,19 @@ pub trait UserExt {
         profile_image_url: Option<String>,
     ) -> Result<User, Error>;
 
-    
-    async fn verifed_token(
-        &self,
-        token: &str,
-    ) -> Result<(), Error>;
 
-    
-    async fn add_verifed_token(
+    async fn verify_email_atomic(
         &self,
-        user_id: Uuid,
         token: &str,
+    ) -> Result<Option<VerifiedUserData>, Error>;
+
+
+    async fn update_verification_token(
+        &self,
+        email: &str,
+        new_token: &str,
         expires_at: DateTime<Utc>,
-    ) -> Result<(), Error>;
+    ) -> Result<Option<(String, String)>, Error>;
 
     async fn increment_user_stat(
         &self,
@@ -563,67 +563,79 @@ impl UserExt for DBClient {
         Ok(user)
     }
 
-    async fn verifed_token(
+    async fn verify_email_atomic(
         &self,
         token: &str,
-    ) -> Result<(), Error> {
-        let mut tx = self.pool.begin().await
-            .map_err(|e| {
-                    log::error!("Error: {}", e);
-                    e
-                })?;
-        let _ =sqlx::query!(
+    ) -> Result<Option<VerifiedUserData>, Error> {
+        let row = sqlx::query(
             r#"
             UPDATE users
             SET verified = true, 
-                updated_at = Now(),
+                updated_at = NOW(),
                 verification_token = NULL,
                 token_expiry = NULL
             WHERE verification_token = $1
-            "#,
-            token
-        ).execute(&mut *tx)
-       .await;
-        tx.commit().await
-            .map_err(|e| {
-                    log::error!("Error: {}", e);
-                    e
-                })?;
-        Ok(())
+              AND token_expiry > NOW()
+              AND verified = false
+            RETURNING id, name, email, role as "role: String"
+            "#
+        )
+        .bind(token)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| {
+            log::error!("Error verificando el token: {}", e);
+            e
+        })?;
+
+        // Mapeamos el resultado si existe
+        Ok(if let Some(r) = row {
+            let role_str: String = r.try_get("role")?;
+            let role = match role_str.as_str() {
+                "Admin" => crate::db::db::UserRole::Admin, // Ajusta según tu enum real
+                _ => crate::db::db::UserRole::User,        // Ajusta según tu enum real
+            };
+
+            Some(VerifiedUserData {
+                id: r.try_get("id")?,
+                name: r.try_get("name")?,
+                email: r.try_get("email")?,
+                role,
+            })
+        } else {
+            None
+        })
     }
 
-    async fn add_verifed_token(
+    async fn update_verification_token(
         &self,
-        user_id: Uuid,
-        token: &str,
-        token_expiry: DateTime<Utc>,
-    ) -> Result<(), Error> {
-        let mut tx = self.pool.begin().await
-            .map_err(|e| {
-                    log::error!("Error: {}", e);
-                    e
-                })?;
-        let _ = sqlx::query!(
+        email: &str,
+        new_token: &str,
+        expires_at: DateTime<Utc>,
+    ) -> Result<Option<(String, String)>, Error> {
+        // Actualizamos de una vez y devolvemos el nombre y el correo.
+        // Solo afecta a usuarios que tengan verified = false
+        let row = sqlx::query!(
             r#"
             UPDATE users
-            SET verification_token = $1, token_expiry = $2, updated_at = Now()
-            WHERE id = $3
+            SET verification_token = $1, 
+                token_expiry = $2, 
+                updated_at = NOW()
+            WHERE email = $3 AND verified = false
+            RETURNING name, email
             "#,
-            token,
-            token_expiry,
-            user_id,
-        ).execute(&mut *tx)
-       .await.map_err(|e| {
-            log::error!("ERROR: {}", e);
+            new_token,
+            expires_at,
+            email
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| {
+            log::error!("Error update_verification_token: {}", e);
             e
-        })?
-        ;
-        tx.commit().await
-            .map_err(|e| {
-                    log::error!("Error: {}", e);
-                    e
-                })?;
-        Ok(())
+        })?;
+
+        Ok(row.map(|r| (r.name, r.email)))
     }
 
     async fn increment_user_stat(
@@ -998,8 +1010,6 @@ pub trait CourseExt {
 
     async fn get_course(&self, course_id: Uuid) -> Result<Option<Course>, Error>;
 
-    async fn get_user_courses(&self, user_id: Uuid) -> Result<Vec<UserCourseDto>, Error>;
-
     async fn get_courses_page(&self, user_id: Option<Uuid>, page: u32, limit: u32) -> Result<Vec<CoursePageRow>, Error>;
 
     async fn get_courses(
@@ -1031,9 +1041,6 @@ pub trait CourseExt {
     ) -> Result<CourseWithModulesDto, Error>;
 
     async fn delete_course(&self, course_id: Uuid) -> Result<(), Error>;
-
-    
-    async fn get_course_count(&self) -> Result<i64, Error>;
 
     async fn create_lesson_comment(
         &self,
@@ -1248,53 +1255,6 @@ impl CourseExt for DBClient {
                     e
                 })?;
         Ok(course)
-    }
-
-    async fn get_user_courses(
-        &self,
-        user_id: Uuid
-    ) -> Result<Vec<UserCourseDto>, Error> {
-
-        let courses = sqlx::query_as::<_, UserCourseDto>(
-            r#"
-            SELECT
-                c.id,
-                c.title,
-                c.description,
-                c.long_description,
-                c.level,
-                c.duration,
-                c.students,
-                c.paypal_product_id,
-                c.price,
-                c.image,
-                c.category,
-                COALESCE(AVG(cr.rating), 0)::int AS rating,
-                COUNT(cr.id) AS rating_count,
-                c.created_at,
-                c.updated_at,
-                c.features
-                -- user course
-
-            FROM courses c
-            INNER JOIN user_courses uc
-                ON uc.course_id = c.id
-            LEFT JOIN course_ratings cr
-                ON cr.course_id = c.id
-            WHERE uc.user_id = $1
-            GROUP BY c.id
-            ORDER BY c.created_at DESC
-            "#
-        )
-        .bind(user_id)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(|e| {
-            log::error!("ERROR get_user_courses: {}", e);
-            e
-        })?;
-
-        Ok(courses)
     }
 
     async fn get_courses_page(
@@ -2099,27 +2059,6 @@ impl CourseExt for DBClient {
         Ok(())
     }
 
-    async fn get_course_count(&self) -> Result<i64, Error> {
-        let mut tx = self.pool.begin().await
-            .map_err(|e| {
-                    log::error!("Error: {}", e);
-                    e
-                })?;
-        let result = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM courses")
-            .fetch_one(&mut *tx)
-            .await.map_err(|e| {
-            log::error!("ERROR: {}", e);
-            e
-        })?
-        ;
-        tx.commit().await
-            .map_err(|e| {
-                    log::error!("Error: {}", e);
-                    e
-                })?;
-        Ok(result)
-    }
-
     async fn create_lesson_comment(
         &self,
         lesson_id: Uuid,
@@ -2369,20 +2308,6 @@ pub trait UserAchievementExt {
         achievement_id: Uuid,
     ) -> Result<UserAchievement, Error>;
 
-    /// Obtiene todos los logros de un usuario.
-    async fn get_user_achievements(
-        &self,
-        user_id: Uuid,
-    ) -> Result<Vec<UserAchievementDto>, Error>;
-
-    /// Verifica si un usuario ya ha ganado un logro específico.
-    
-    async fn has_user_earned(
-        &self,
-        user_id: Uuid,
-        achievement_id: Uuid,
-    ) -> Result<bool, Error>;
-
     /// Obtiene logros de usuario con detalles completos.
     async fn get_user_achievements_with_details(
         &self,
@@ -2398,12 +2323,6 @@ pub trait UserAchievementExt {
     ) -> Result<Vec<Achievement>, Error>;
 }
 
-#[async_trait]
-pub trait NotificationExt {
-    async fn get_user_notifications(&self, user_id: Uuid) -> Result<Vec<Notification>, Error>;
-    async fn mark_notification_read(&self, notification_id: Uuid) -> Result<(), Error>;
-    async fn create_notification(&self, user_id: Uuid, title: &str, message: &str, sent_via: &str) -> Result<Notification, Error>;
-}
 
 /// Implementación para la conexión principal del sistema (`DBClient`).
 #[async_trait]
@@ -2668,71 +2587,6 @@ impl UserAchievementExt for DBClient {
         Ok(user_achievement)
     }
 
-    async fn get_user_achievements(
-        &self,
-        user_id: Uuid,
-    ) -> Result<Vec<UserAchievementDto>, Error> {
-        let achievements = sqlx::query_as::<_, UserAchievementDto>(
-            r#"
-            SELECT
-                a.id,
-                a.name,
-                a.description,
-                a.icon,
-                a.trigger_type,
-                a.trigger_value,
-                a.active,
-                COALESCE(ua.earned, false) AS earned,
-                ua.earned_at,
-                a.created_at
-            FROM achievement a
-            LEFT JOIN user_achievement ua
-                ON ua.achievement_id = a.id
-                AND ua.user_id = $1
-            WHERE a.active = true
-            ORDER BY a.created_at ASC
-            "#
-        )
-        .bind(user_id)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(|e| {
-            log::error!("Error: {}", e);
-            e
-        })?;
-
-        Ok(achievements)
-    }
-
-    async fn has_user_earned(
-        &self,
-        user_id: Uuid,
-        achievement_id: Uuid,
-    ) -> Result<bool, Error> {
-        let mut tx = self.pool.begin().await
-            .map_err(|e| {
-                    log::error!("Error: {}", e);
-                    e
-                })?;
-        let exists = sqlx::query_scalar::<_, bool>(
-            "SELECT EXISTS(SELECT 1 FROM user_achievement WHERE user_id = $1 AND achievement_id = $2 AND earned = true)",
-        )
-        .bind(user_id)
-        .bind(achievement_id)
-        .fetch_one(&mut *tx)
-        .await
-            .map_err(|e| {
-                    log::error!("Error: {}", e);
-                    e
-                })?;
-        tx.commit().await
-            .map_err(|e| {
-                    log::error!("Error: {}", e);
-                    e
-                })?;
-        Ok(exists)
-    }
-
     async fn get_user_achievements_with_details(
         &self,
         user_id: Uuid,
@@ -2986,20 +2840,6 @@ pub trait CoursePurchaseExt {
         &self,
         user_id: Uuid,
     ) -> Result<Vec<Uuid>, Error>;
-    
-    async fn get_user_course_progress(
-        &self,
-        user_id: Uuid,
-        course_id: Uuid,
-    ) -> Result<Option<CourseProgress>, Error>;
-    
-    async fn update_course_progress(
-        &self,
-        user_id: Uuid,
-        course_id: Uuid,
-        completed_lessons: i32,
-        progress_percentage: f32,
-    ) -> Result<(), Error>;
 
     async fn update_lesson_progress(
         &self,
@@ -3283,79 +3123,7 @@ impl CoursePurchaseExt for DBClient {
                 })?;
         return purcha
     }
-
-    async fn get_user_course_progress(
-        &self,
-        user_id: Uuid,
-        course_id: Uuid
-    ) -> Result<Option<CourseProgress>, Error> {
-        let mut tx = self.pool.begin().await
-            .map_err(|e| {
-                    log::error!("Error: {}", e);
-                    e
-                })?;
-        let progress = query_as::<_, CourseProgress>(
-            r#"
-            SELECT * FROM course_progress
-            WHERE user_id = $1 AND course_id = $2
-            "#
-        )
-        .bind(user_id)
-        .bind(course_id)
-        .fetch_optional(&mut *tx)
-        .await.map_err(|e| {
-            log::error!("ERROR: {}", e);
-            e
-        });
-        tx.commit().await
-            .map_err(|e| {
-                    log::error!("Error: {}", e);
-                    e
-                })?;
-        return progress
-    }
-
-    async fn update_course_progress(
-        &self,
-        user_id: Uuid,
-        course_id: Uuid,
-        completed_lessons: i32,
-        progress_percentage: f32
-    ) -> Result<(), Error> {
-        let mut tx = self.pool.begin().await
-            .map_err(|e| {
-                    log::error!("Error: {}", e);
-                    e
-                })?;
-        let _ = query!(
-            r#"
-            UPDATE course_progress
-            SET completed_lessons = $1,
-                progress_percentage = $2,
-                last_accessed = NOW(),
-                updated_at = NOW()
-            WHERE user_id = $3 AND course_id = $4
-            "#,
-            completed_lessons,
-            progress_percentage,
-            user_id,
-            course_id
-        )
-        .execute(&mut *tx)
-        .await.map_err(|e|
-            {
-                log::error!("Error: {}", e);
-                e
-            }
-        );
-        tx.commit().await
-            .map_err(|e| {
-                    log::error!("Error: {}", e);
-                    e
-                })?;
-        Ok(())
-    }
-
+    
     async fn update_lesson_progress(
         &self,
         user_id: Uuid,
@@ -3563,11 +3331,6 @@ pub trait SubscriptionExt {
     async fn cancel_subscription(
         &self,
         subscription_id: Uuid,
-    ) -> Result<(), Error>;
-
-    async fn cancel_subscription_by_paypal_id(
-        &self,
-        paypal_subscription_id: &str,
     ) -> Result<(), Error>;
 
     async fn update_subscription_end_time(
@@ -3904,40 +3667,6 @@ impl SubscriptionExt for DBClient {
         Ok(())
     }
 
-    async fn cancel_subscription_by_paypal_id(
-        &self,
-        paypal_subscription_id: &str,
-    ) -> Result<(), Error> {
-        let mut tx = self.pool.begin().await
-            .map_err(|e| {
-                    log::error!("Error: {}", e);
-                    e
-                })?;
-        let now = Utc::now();
-
-        // Solo marcar auto_renew = false desde webhook
-        sqlx::query(
-            r#"
-            UPDATE subscription
-            SET auto_renew = false, updated_at = $2
-            WHERE paypal_subscription_id = $1
-            "#,
-        )
-        .bind(paypal_subscription_id)
-        .bind(now)
-        .execute(&mut *tx)
-        .await.map_err(|e| {
-            log::error!("ERROR: {}", e);
-            e
-        })?;
-        tx.commit().await
-            .map_err(|e| {
-                    log::error!("Error: {}", e);
-                    e
-                })?;
-        Ok(())
-    }
-
     async fn update_subscription_end_time(
         &self,
         paypal_subscription_id: &str,
@@ -4107,251 +3836,144 @@ impl SubscriptionExt for DBClient {
 
 #[async_trait]
 pub trait PasswordResetTokenExt {
-    async fn create_password_reset_token(
+    async fn generate_reset_token_atomic(
         &self,
-        user_id: Uuid,
+        user_email: &str,
+        new_token_id: Uuid,
         token_hash: &str,
         expires_at: DateTime<Utc>,
-    ) -> Result<PasswordResetToken, Error>;
+    ) -> Result<Option<ForgotPasswordResult>, Error>;
 
-    async fn get_password_reset_token(
+    async fn reset_password_with_token(
         &self,
         token_hash: &str,
-    ) -> Result<Option<PasswordResetToken>, Error>;
-
-    async fn mark_token_used(
-        &self,
-        token_hash: &str,
-    ) -> Result<(), Error>;
-
-    async fn invalidate_user_tokens(
-        &self,
-        user_id: Uuid,
-    ) -> Result<(), Error>;
+        new_password_hash: &str,
+    ) -> Result<Option<Uuid>, Error>;
 }
 
 #[async_trait]
 impl PasswordResetTokenExt for DBClient {
-    async fn create_password_reset_token(
+    async fn generate_reset_token_atomic(
         &self,
-        user_id: Uuid,
+        user_email: &str,
+        new_token_id: Uuid,
         token_hash: &str,
         expires_at: DateTime<Utc>,
-    ) -> Result<PasswordResetToken, Error> {
-        let mut tx = self.pool.begin().await
-            .map_err(|e| {
-                    log::error!("Error: {}", e);
-                    e
-                })?;
-        let id = Uuid::new_v4();
-
-        // Obtener la versión más alta para este usuario
-        let max_version = sqlx::query_scalar!(
-            "SELECT COALESCE(MAX(version), 0) FROM password_reset_tokens WHERE user_id = $1",
-            user_id
-        )
-        .fetch_one(&mut *tx)
-        .await?
-        .unwrap_or(0);
-
-        let new_version = max_version + 1;
-
-        let token = sqlx::query_as::<_, PasswordResetToken>(
+    ) -> Result<Option<ForgotPasswordResult>, Error> {
+        
+        let row = sqlx::query(
             r#"
-            INSERT INTO password_reset_tokens (id, user_id, token_hash, version, expires_at, used, created_at)
-            VALUES ($1, $2, $3, $4, $5, false, $6)
-            RETURNING id, user_id, token_hash, version, expires_at, used, created_at
-            "#,
+            WITH target_user AS (
+                SELECT id, name, email
+                FROM users
+                WHERE email = $1
+                LIMIT 1
+            ),
+            invalidated_tokens AS (
+                UPDATE password_reset_tokens
+                SET used = true
+                WHERE user_id = (SELECT id FROM target_user)
+                  AND used = false
+                RETURNING id
+            ),
+            max_version AS (
+                SELECT COALESCE(MAX(version), 0) + 1 as next_version
+                FROM password_reset_tokens
+                WHERE user_id = (SELECT id FROM target_user)
+            ),
+            inserted_token AS (
+                INSERT INTO password_reset_tokens 
+                    (id, user_id, token_hash, version, expires_at, used, created_at)
+                SELECT 
+                    $2, 
+                    (SELECT id FROM target_user), 
+                    $3, 
+                    (SELECT next_version FROM max_version), 
+                    $4, 
+                    false, 
+                    NOW()
+                WHERE EXISTS (SELECT 1 FROM target_user)
+                RETURNING id, user_id, token_hash, version, expires_at, used, created_at
+            )
+            SELECT 
+                u.name AS user_name, 
+                u.email AS user_email,
+                t.id AS token_id,
+                t.user_id,
+                t.token_hash,
+                t.version,
+                t.expires_at,
+                t.used,
+                t.created_at
+            FROM target_user u
+            JOIN inserted_token t ON t.user_id = u.id
+            "#
         )
-        .bind(id)
-        .bind(user_id)
+        .bind(user_email)
+        .bind(new_token_id)
         .bind(token_hash)
-        .bind(new_version)
         .bind(expires_at)
-        .bind(Utc::now())
-        .fetch_one(&mut *tx)
-        .await.map_err(|e| {
-            log::error!("ERROR: {}", e);
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| {
+            log::error!("Error atomic reset token: {}", e);
             e
         })?;
-        tx.commit().await
-            .map_err(|e| {
-                    log::error!("Error: {}", e);
-                    e
-                })?;
-        Ok(token)
+
+        Ok(if let Some(r) = row {
+            Some(ForgotPasswordResult {
+                user_name: r.try_get("user_name")?,
+                user_email: r.try_get("user_email")?,
+                token_data: PasswordResetToken {
+                    id: r.try_get("token_id")?,
+                    user_id: r.try_get("user_id")?,
+                    token_hash: r.try_get("token_hash")?,
+                    version: r.try_get("version")?,
+                    expires_at: r.try_get("expires_at")?,
+                    used: r.try_get("used")?,
+                    created_at: r.try_get("created_at")?,
+                }
+            })
+        } else {
+            None
+        })
     }
 
-    async fn get_password_reset_token(
+    async fn reset_password_with_token(
         &self,
         token_hash: &str,
-    ) -> Result<Option<PasswordResetToken>, Error> {
-        let mut tx = self.pool.begin().await
-            .map_err(|e| {
-                    log::error!("Error: {}", e);
-                    e
-                })?;
-        let token = sqlx::query_as::<_, PasswordResetToken>(
+        new_password_hash: &str,
+    ) -> Result<Option<Uuid>, Error> {
+        // Devuelve Some(user_id) si se actualizó; None si token inválido/expirado/usado
+        let row = sqlx::query(
             r#"
-            SELECT id, user_id, token_hash, version, expires_at, used, created_at
-            FROM password_reset_tokens
-            WHERE token_hash = $1 AND used = false AND expires_at > $2
-            "#,
+            WITH consumed AS (
+              UPDATE password_reset_tokens
+              SET used = TRUE
+              WHERE token_hash = $1
+                AND used = FALSE
+                AND expires_at > NOW()
+              RETURNING user_id
+            ),
+            updated AS (
+              UPDATE users
+              SET password = $2, updated_at = NOW()
+              WHERE id = (SELECT user_id FROM consumed)
+              RETURNING id
+            )
+            SELECT id FROM updated;
+            "#
         )
         .bind(token_hash)
-        .bind(Utc::now())
-        .fetch_optional(&mut *tx)
-        .await.map_err(|e| {
+        .bind(new_password_hash)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| {
             log::error!("ERROR: {}", e);
             e
         })?;
-        tx.commit().await
-            .map_err(|e| {
-                    log::error!("Error: {}", e);
-                    e
-                })?;
-        Ok(token)
-    }
 
-    async fn mark_token_used(
-        &self,
-        token_hash: &str,
-    ) -> Result<(), Error> {
-        let mut tx = self.pool.begin().await
-            .map_err(|e| {
-                    log::error!("Error: {}", e);
-                    e
-                })?;
-        sqlx::query!(
-            "UPDATE password_reset_tokens SET used = true WHERE token_hash = $1",
-            token_hash
-        )
-        .execute(&mut *tx)
-        .await.map_err(|e| {
-            log::error!("ERROR: {}", e);
-            e
-        })?;
-        tx.commit().await
-            .map_err(|e| {
-                    log::error!("Error: {}", e);
-                    e
-                })?;
-        Ok(())
-    }
-
-    async fn invalidate_user_tokens(
-        &self,
-        user_id: Uuid,
-    ) -> Result<(), Error> {
-        let mut tx = self.pool.begin().await
-            .map_err(|e| {
-                    log::error!("Error: {}", e);
-                    e
-                })?;
-        sqlx::query!(
-            "UPDATE password_reset_tokens SET used = true WHERE user_id = $1",
-            user_id
-        )
-        .execute(&mut *tx)
-        .await.map_err(|e| {
-            log::error!("ERROR: {}", e);
-            e
-        })?;
-        tx.commit().await
-            .map_err(|e| {
-                    log::error!("Error: {}", e);
-                    e
-                })?;
-        Ok(())
-    }
-}
-
-#[async_trait]
-impl NotificationExt for DBClient {
-    async fn get_user_notifications(&self, user_id: Uuid) -> Result<Vec<Notification>, Error> {
-        let mut tx = self.pool.begin().await
-            .map_err(|e| {
-                    log::error!("Error: {}", e);
-                    e
-                })?;
-        let notifications = sqlx::query_as::<_, Notification>(
-            r#"
-            SELECT id, user_id, title, message, sent_via, sent_at, read
-            FROM notification
-            WHERE user_id = $1
-            ORDER BY sent_at DESC
-            "#,
-        )
-        .bind(user_id)
-        .fetch_all(&mut *tx)
-        .await.map_err(|e| {
-            log::error!("ERROR: {}", e);
-            e
-        })?;
-        tx.commit().await
-            .map_err(|e| {
-                    log::error!("Error: {}", e);
-                    e
-                })?;
-        Ok(notifications)
-    }
-
-    async fn mark_notification_read(&self, notification_id: Uuid) -> Result<(), Error> {
-        let mut tx = self.pool.begin().await
-            .map_err(|e| {
-                    log::error!("Error: {}", e);
-                    e
-                })?;
-        sqlx::query!(
-            "UPDATE notification SET read = true WHERE id = $1",
-            notification_id
-        )
-        .execute(&mut *tx)
-        .await.map_err(|e| {
-            log::error!("ERROR: {}", e);
-            e
-        })?;
-        tx.commit().await
-            .map_err(|e| {
-                    log::error!("Error: {}", e);
-                    e
-                })?;
-        Ok(())
-    }
-
-    async fn create_notification(&self, user_id: Uuid, title: &str, message: &str, sent_via: &str) -> Result<Notification, Error> {
-        let mut tx = self.pool.begin().await
-            .map_err(|e| {
-                    log::error!("Error: {}", e);
-                    e
-                })?;
-        let id = Uuid::new_v4();
-        let now = Utc::now();
-
-        let notification = sqlx::query_as::<_, Notification>(
-            r#"
-            INSERT INTO notification (id, user_id, title, message, sent_via, sent_at, read)
-            VALUES ($1, $2, $3, $4, $5, $6, false)
-            RETURNING id, user_id, title, message, sent_via, sent_at, read
-            "#,
-        )
-        .bind(id)
-        .bind(user_id)
-        .bind(title)
-        .bind(message)
-        .bind(sent_via)
-        .bind(now)
-        .fetch_one(&mut *tx)
-        .await.map_err(|e| {
-            log::error!("ERROR: {}", e);
-            e
-        })?;
-        tx.commit().await
-            .map_err(|e| {
-                    log::error!("Error: {}", e);
-                    e
-                })?;
-        Ok(notification)
+        Ok(row.map(|r| r.get::<Uuid, _>("id")))
     }
 }
 

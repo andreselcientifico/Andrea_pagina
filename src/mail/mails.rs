@@ -1,13 +1,15 @@
 use super::sendmail::send_email;
+use crate::{AppState, utils::token::base_url};
 
 pub async fn send_verification_email(
     to_email: &str,
+    app_state: &AppState,
     username: &str,
-    token: &str
+    token: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let subject = "Verificación de Correo Electrónico";
-    let base_url = "https://localhost:8000/api/auth/verify";
-    let verification_link = create_verification_link(base_url, token);
+    let base_url = format!("{}verificar-email", base_url(&app_state.env.host));
+    let verification_link = create_verification_link(&base_url, token);
 
     let body_html = format!(
         r#"
@@ -39,31 +41,27 @@ pub async fn send_verification_email(
             </body>
         </html>
         "#,
-        username,
-        verification_link
+        username, verification_link
     );
 
     let placeholders = vec![
         ("{{username}}".to_string(), username.to_string()),
-        ("{{verification_link}}".to_string(), verification_link)
+        ("{{verification_link}}".to_string(), verification_link),
     ];
 
     send_email(to_email, subject, &body_html, &placeholders).await
 }
 
-fn create_verification_link(base_url: &str, token: &str) -> String {
+fn create_verification_link(base_url: &String, token: &str) -> String {
     format!("{}?token={}", base_url, token)
 }
 
-
 pub async fn send_welcome_email(
     to_email: &str,
-    username: &str
+    username: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let subject = "¡Bienvenido a Vallenato Academy! 🎉";
-    let placeholders = vec![
-        ("{{username}}".to_string(), username.to_string())
-    ];
+    let placeholders = vec![("{{username}}".to_string(), username.to_string())];
 
     let body_html = format!(
         r#"
@@ -97,16 +95,15 @@ pub async fn send_welcome_email(
     send_email(to_email, subject, &body_html, &placeholders).await
 }
 
-
 pub async fn send_forgot_password_email(
     to_email: &str,
     reset_link: &str,
-    username: &str
+    username: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let subject = "Restablecer tu Contraseña 🔒";
     let placeholders = vec![
         ("{{username}}".to_string(), username.to_string()),
-        ("{{reset_link}}".to_string(), reset_link.to_string())
+        ("{{reset_link}}".to_string(), reset_link.to_string()),
     ];
 
     let body_html = format!(
@@ -140,8 +137,7 @@ pub async fn send_forgot_password_email(
             </body>
         </html>
         "#,
-        username,
-        reset_link
+        username, reset_link
     );
 
     send_email(to_email, subject, &body_html, &placeholders).await
@@ -196,9 +192,7 @@ pub async fn send_new_content_email(
             </body>
         </html>
         "#,
-        username,
-        content_type,
-        content_title
+        username, content_type, content_title
     );
 
     send_email(to_email, &subject, &body_html, &placeholders).await
@@ -211,9 +205,7 @@ pub async fn send_admin_bulk_email(
     subject: &str,
     html_content: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let placeholders = vec![
-        ("{{username}}".to_string(), username.to_string()),
-    ];
+    let placeholders = vec![("{{username}}".to_string(), username.to_string())];
 
     let body_html = format!(
         r#"
@@ -241,8 +233,7 @@ pub async fn send_admin_bulk_email(
             </body>
         </html>
         "#,
-        username,
-        html_content
+        username, html_content
     );
 
     send_email(to_email, subject, &body_html, &placeholders).await

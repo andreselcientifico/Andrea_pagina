@@ -1,10 +1,10 @@
+use chrono::{DateTime, NaiveDate, Utc};
 use core::str;
-use chrono::{ DateTime, Utc, NaiveDate };
-use serde::{ Deserialize, Serialize };
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use validator::Validate; 
+use validator::Validate;
 
-use crate::models::models::{ Achievement, Certificate, Course, Subscription, User, UserRole};
+use crate::models::models::{Certificate, Course, Subscription, User, UserRole};
 
 #[derive(Validate, Debug, Default, Clone, Serialize, Deserialize)]
 pub struct RegisterDTO {
@@ -15,9 +15,7 @@ pub struct RegisterDTO {
         email(message = "El correo electrónico no es válido")
     )]
     pub email: String,
-    #[validate(
-        length(min = 6, message = "La contraseña debe tener al menos 6 caracteres"),
-    )]
+    #[validate(length(min = 6, message = "La contraseña debe tener al menos 6 caracteres"))]
     pub password: String,
     #[validate(
         length(min = 1, message = "Confirmar contraseña es requerido"),
@@ -34,9 +32,7 @@ pub struct LoginDTO {
         email(message = "El correo electrónico no es válido")
     )]
     pub email: String,
-    #[validate(
-        length(min = 6, message = "La contraseña debe tener al menos 6 caracteres")
-    )]
+    #[validate(length(min = 6, message = "La contraseña debe tener al menos 6 caracteres"))]
     pub password: String,
 }
 
@@ -61,7 +57,7 @@ pub struct FilterUserDto {
     pub course_reminders: Option<bool>,
     pub new_content: Option<bool>,
     #[serde(rename = "birthDate")]
-    pub birth_date: Option<NaiveDate>, 
+    pub birth_date: Option<NaiveDate>,
     pub role: Option<UserRole>,
     pub verified: Option<bool>,
     pub created_at: Option<DateTime<Utc>>,
@@ -90,9 +86,7 @@ impl FilterUserDto {
     }
 
     pub fn filter_users(user: &[User]) -> Vec<FilterUserDto> {
-        user.iter()
-            .map(|u| FilterUserDto::filter_user(u))
-            .collect()
+        user.iter().map(|u| FilterUserDto::filter_user(u)).collect()
     }
 }
 
@@ -151,18 +145,20 @@ fn validate_user_role(role: &UserRole) -> Result<(), validator::ValidationError>
 
 #[derive(Debug, Validate, Default, Clone, Serialize, Deserialize)]
 pub struct UserPasswordUpdateDTO {
-    #[validate(
-        length(min = 6, message = "La contraseña debe tener al menos 6 caracteres")
-    )]
-    #[serde(rename = "old_Password")]
+    #[validate(length(min = 6, message = "La contraseña debe tener al menos 6 caracteres"))]
+    #[serde(rename = "oldPassword")]
     pub old_password: String,
-    #[validate(
-        length(min = 6, message = "La nueva contraseña debe tener al menos 6 caracteres")
-    )]
+    #[validate(length(
+        min = 6,
+        message = "La nueva contraseña debe tener al menos 6 caracteres"
+    ))]
     #[serde(rename = "newPassword")]
     pub new_password: String,
     #[validate(
-        length(min = 6, message = "Confirmar nueva contraseña debe tener al menos 6 caracteres"),
+        length(
+            min = 6,
+            message = "Confirmar nueva contraseña debe tener al menos 6 caracteres"
+        ),
         must_match(other = "new_password", message = "Las contraseñas no coinciden")
     )]
     #[serde(rename = "confirmNewPassword")]
@@ -173,6 +169,21 @@ pub struct UserPasswordUpdateDTO {
 pub struct VerifyEmailQueryDTO {
     #[validate(length(min = 1, message = "El token es requerido"))]
     pub token: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct VerifiedUserData {
+    pub id: Uuid,
+    pub name: String,
+    pub email: String,
+    pub role: UserRole,
+}
+
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct ResendVerificationDTO {
+    #[validate(email(message = "El email no es válido"))]
+    pub email: String,
 }
 
 #[derive(Deserialize, Serialize, Validate, Debug, Clone)]
@@ -187,20 +198,24 @@ pub struct ForgotPasswordRequestDTO {
 #[derive(Debug, Serialize, Deserialize, Validate, Clone)]
 pub struct ResetPasswordRequestDTO {
     #[validate(length(min = 1, message = "El token es requerido"))]
+    #[serde(rename = "token")]
     pub token: String,
-    #[validate(
-        length(min = 6, message = "La nueva contraseña debe tener al menos 6 caracteres")
-    )]
+    #[validate(length(
+        min = 6,
+        message = "La nueva contraseña debe tener al menos 6 caracteres"
+    ))]
     #[serde(rename = "newPassword")]
     pub new_password: String,
     #[validate(
-        length(min = 6, message = "Confirmar nueva contraseña debe tener al menos 6 caracteres"),
+        length(
+            min = 6,
+            message = "Confirmar nueva contraseña debe tener al menos 6 caracteres"
+        ),
         must_match(other = "new_password", message = "Las contraseñas no coinciden")
     )]
     #[serde(rename = "confirmNewPassword")]
     pub confirm_new_password: String,
 }
-
 
 #[derive(Validate, Debug, Clone, Serialize, Deserialize)]
 pub struct CreateCourseDTO {
@@ -261,39 +276,37 @@ pub struct CoursePageRow {
     pub has_active_subscription: bool,
 }
 
-
 #[derive(Validate, Debug, Clone, Serialize, Deserialize)]
 pub struct CreateLessonDTO {
     #[validate(length(min = 1, message = "El título de la lección es requerido"))]
     pub title: String,
-    
+
     pub duration: Option<String>,
     pub completed: bool,
     #[serde(rename = "type")]
     #[validate(length(min = 1, message = "El tipo de lección es requerido"))]
     pub r#type: String, // video | exercise | quiz
-    
+
     pub content_url: Option<String>,
     pub description: Option<String>,
-    
+
     // El orden es opcional en la entrada, se puede calcular si no se proporciona
-    pub order: Option<i32>, 
+    pub order: Option<i32>,
 }
 
 #[derive(Validate, Debug, Clone, Serialize, Deserialize)]
 pub struct CreateModuleDTO {
     #[validate(length(min = 1, message = "El título del módulo es requerido"))]
     pub title: String,
-    
+
     // El orden es opcional en la entrada, se puede calcular si no se proporciona
-    pub order: Option<i32>, 
-    
+    pub order: Option<i32>,
+
     #[serde(default)]
     pub lessons: Vec<CreateLessonDTO>,
 }
 
-
-#[derive(Validate, Debug, Clone, Serialize, Deserialize,PartialEq)]
+#[derive(Validate, Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct UpdateCourseDTO {
     #[validate(length(min = 1, message = "El título del curso es requerido"))]
     pub title: Option<String>,
@@ -341,34 +354,33 @@ impl PartialEq<Course> for UpdateCourseDTO {
     }
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct UpdateLessonDTO {
     // Si 'id' está presente, se actualiza; si es None, se crea una nueva lección.
-    pub id: Option<Uuid>, 
+    pub id: Option<Uuid>,
     pub module_id: Option<Uuid>,
     // Los campos son Option<T> si se permite la actualización parcial
-    pub title: Option<String>, 
+    pub title: Option<String>,
     pub duration: Option<String>,
     pub completed: Option<bool>,
     #[serde(rename = "type")]
     pub r#type: Option<String>,
     pub content_url: Option<String>,
     pub description: Option<String>,
-    pub order: Option<i32>, 
+    pub order: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct UpdateModuleDTO {
     // Si 'id' está presente, se actualiza; si es None, se crea un nuevo módulo.
-    pub id: Option<Uuid>, 
+    pub id: Option<Uuid>,
 
     pub title: Option<String>,
     pub order: Option<i32>,
 
     #[serde(default)]
     // Aquí el Option<Vec> permite que se omita la lista de lecciones si no se van a actualizar
-    pub lessons: Option<Vec<UpdateLessonDTO>>, 
+    pub lessons: Option<Vec<UpdateLessonDTO>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -413,78 +425,17 @@ pub struct CourseWithModulesDto {
     pub modules: Vec<ModuleWithLessonsDto>,
 }
 
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct CourseResponseDTO {
-    pub id: String,
-    pub name: String,
-    pub description: String,
-    pub price: f64,
-    #[serde(rename = "createdAt")]
-    pub created_at: DateTime<Utc>,
-}
-
-
-#[derive(Validate, Debug, Clone, Serialize, Deserialize)]
-pub struct CreatePaymentDTO {
-    #[validate(length(min = 1, message = "El ID del curso es requerido"))]
-    pub course_id: String,
-    #[validate(length(min = 1, message = "El ID del usuario es requerido"))]
-    pub user_id: String,
-    #[validate(range(min = 0.0, message = "El monto debe ser mayor a 0"))]
-    pub amount: f64,
-    #[validate(length(min = 1, message = "El método de pago es requerido"))]
-    pub payment_method: String,
-    #[validate(length(min = 1, message = "El ID de transacción es requerido"))]
-    pub transaction_id: String,
-}
-
-
 #[derive(Debug, Serialize, Deserialize, Validate, Clone)]
 pub struct ProductDTO {
     #[validate(length(min = 1, message = "El nombre del producto es requerido"))]
     pub name: String,
     #[validate(length(min = 1, message = "La descripción del producto es requerida"))]
     pub description: String,
-    pub type_: String, 
-    pub category: String, 
+    pub type_: String,
+    pub category: String,
     #[validate(url(message = "La URL de la imagen no es válida"))]
     pub image_url: Option<String>,
     pub home_url: Option<String>,
-}
-
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct PaymentResponseDTO {
-    pub id: String,
-    pub course_id: String,
-    pub user_id: String,
-    pub amount: f64,
-    pub status: String, // "pending", "completed", "failed"
-    pub payment_method: String,
-    pub transaction_id: Option<String>,
-    #[serde(rename = "createdAt")]
-    pub created_at: DateTime<Utc>,
-    #[serde(rename = "updatedAt")]
-    pub updated_at: Option<DateTime<Utc>>,
-}
-
-
-#[derive(Validate, Debug, Clone, Serialize, Deserialize)]
-pub struct VerifyPaymentDTO {
-    #[serde(default)]
-    pub payment_id: Option<String>,
-    #[serde(default)]
-    pub transaction_id: Option<String>,
-}
-
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct UserPaymentStatusDTO {
-    pub user_id: String,
-    pub course_id: String,
-    pub paid: bool,
-    pub payment_date: Option<DateTime<Utc>>,
 }
 
 
@@ -493,7 +444,6 @@ pub struct UserProfileResponse {
     pub status: String,
     pub data: UserProfileData,
 }
-
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UserProfileData {
@@ -504,7 +454,6 @@ pub struct UserProfileData {
     pub certificates: Vec<Certificate>,
 }
 
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UpdateUserProfileDto {
     pub name: Option<String>,
@@ -513,57 +462,6 @@ pub struct UpdateUserProfileDto {
     pub bio: Option<String>,
     pub birth_date: Option<chrono::NaiveDate>,
     pub profile_image_url: Option<String>,
-}
-
-// Nuevos DTOs para courses y achievements (tipo "filter" como FilterUserDto)
-
-#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
-pub struct FilterCourseDto {
-    pub id: Uuid,
-    pub title: Option<String>,
-    pub description: Option<String>,
-    pub long_description: Option<String>,
-    pub price: Option<f64>,
-    pub level: Option<String>,
-    pub duration: Option<String>,
-    pub students: Option<i32>,
-    pub image: Option<String>,
-    pub category: Option<String>,
-    pub rating: i32,
-    pub features: Option<Vec<String>>,
-    pub paypal_product_id: Option<String>,
-    pub created_at: Option<DateTime<Utc>>,
-    pub updated_at: Option<DateTime<Utc>>,
-}
-
-impl FilterCourseDto {
-    pub fn filter_course(course: &UserCourseDto) -> Self {
-        let features: Option<Vec<String>> = course.features.as_ref().and_then(|v| {
-            serde_json::from_value(v.clone()).ok()
-        });
-        FilterCourseDto {
-            id: course.id,
-            title: Some(course.title.to_owned()),
-            description: Some(course.description.to_owned()),
-            long_description: course.long_description.clone(),
-            price: Some(course.price),
-            level: Some(course.level.clone()),
-            duration: course.duration.clone(),
-            students: Some(course.students),
-            image: course.image.clone(),
-            category: Some(course.category.clone()),
-            rating: course.rating.clone(),
-            paypal_product_id: course.paypal_product_id.clone(),
-            features,
-            created_at: Some(course.created_at),
-            updated_at: Some(course.updated_at),
-        }
-    }
-    
-    pub fn filter_courses(list: &[UserCourseDto]) -> Vec<FilterCourseDto> {
-        list.iter().map(|c| FilterCourseDto::filter_course(c)).collect()
-    }
-
 }
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
@@ -580,38 +478,10 @@ pub struct UserAchievementDto {
     pub created_at: DateTime<Utc>,
 }
 
-
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct FilterAchievementDto {
-    pub id: Option<String>,
-    pub title: Option<String>,
-    pub description: Option<String>,
-    #[serde(rename = "createdAt")]
-    pub created_at: Option<DateTime<Utc>>,
-    // añade otros campos que tenga tu modelo Achievement si los necesitas (p.ej. points)
-}
-
-impl FilterAchievementDto {
-    pub fn filter_achievement(a: &Achievement) -> Self {
-        FilterAchievementDto {
-            id: Some(a.id.to_string()),
-            // adapta names según tu modelo Achievement
-            title: Some(a.name.to_owned()),
-            description: a.description.clone(),
-            created_at: Some(a.created_at),
-        }
-    }
-
-    pub fn filter_achievements(list: &[Achievement]) -> Vec<FilterAchievementDto> {
-        list.iter().map(|a| FilterAchievementDto::filter_achievement(a)).collect()
-    }
-}
-
 #[derive(Debug, Serialize, Deserialize, Validate, sqlx::FromRow)]
 pub struct CreatedCommentDto {
     #[validate(length(min = 1, message = "El comentario no puede estar vacío"))]
-    pub content: String
+    pub content: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Validate, sqlx::FromRow)]
@@ -639,15 +509,15 @@ pub struct CourseRatingDto {
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct UserCourseDto {
     pub id: Uuid,
-    pub title: String,                       
-    pub description: String,                  
-    pub long_description: Option<String>,    
-    pub level: String,                        
+    pub title: String,
+    pub description: String,
+    pub long_description: Option<String>,
+    pub level: String,
     pub price: f64,
-    pub duration: Option<String>,            
-    pub students: i32,                                              
-    pub image: Option<String>,                
-    pub category: String,                     
+    pub duration: Option<String>,
+    pub students: i32,
+    pub image: Option<String>,
+    pub category: String,
     pub rating: i32,
     pub features: Option<serde_json::Value>,
     pub paypal_product_id: Option<String>,
@@ -685,7 +555,7 @@ pub struct QuestionDto {
     pub options: Vec<OptionDto>,
     // Only verify/correct_option if needed generally not sent to frontend for taking quiz
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub correct_option_id: Option<String>, 
+    pub correct_option_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub explanation: Option<String>,
     pub order: i32,

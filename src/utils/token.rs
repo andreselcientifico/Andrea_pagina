@@ -33,6 +33,15 @@ pub fn create_token_rsa(user_id: Uuid, role:UserRole, subscription_expires_at: O
     )
 }
 
+pub fn base_url(host: &str) -> String {
+    let trimmed = host.trim();
+    if trimmed.ends_with('/') {
+        trimmed.to_string()
+    } else {
+        format!("{}/", trimmed)
+    }
+}
+
 // pub fn decode_token<T: Into<String>>(token: T, secret: DecodingKey) -> Result<TokenClaims, JwtError> {
 //     let token = token.into();
 //     if token.is_empty() {

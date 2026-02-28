@@ -19,6 +19,7 @@ impl fmt::Display for ErrorResponse {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, PartialEq)]
 pub enum ErrorMessage {
     EmptyPassword,
@@ -90,7 +91,7 @@ pub struct HttpError {
 }
 
 impl HttpError {
-    
+    #[allow(dead_code)]
     pub fn new(message: impl Into<String>, status: StatusCode) -> Self {
         HttpError {
             message: message.into(),
@@ -141,7 +142,8 @@ impl HttpError {
             status: StatusCode::FORBIDDEN,
         }
     }
-
+    
+    #[allow(dead_code)]
     pub fn into_http_response(self) -> HttpResponse {
         HttpResponse::build(self.status).json(ErrorResponse {
             status: "fail".to_string(),

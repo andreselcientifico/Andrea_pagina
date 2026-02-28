@@ -45,3 +45,5 @@ log = "0.4.29"
 bigdecimal = "0.4.9"
 actix-files = { version = "0.6.10", features = [] }
 tera = "1.20.1"
+sha2 = "0.10.9"
+hex = "0.4.3"
