@@ -238,3 +238,69 @@ pub async fn send_admin_bulk_email(
 
     send_email(to_email, subject, &body_html, &placeholders).await
 }
+
+pub async fn send_contact_email(
+    name: &str,
+    from_email: &str,
+    subject_input: &str,
+    message: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let admin_email = std::env::var("ADMIN_EMAIL").unwrap_or_else(|_| {
+        std::env::var("SMTP_USERNAME").unwrap_or_else(|_| "admin@vallenatofemenino.com".to_string())
+    });
+
+    let subject = format!("📬 Nuevo mensaje de contacto: {}", subject_input);
+
+    let body_html = format!(
+        r#"
+        <html>
+            <head>
+                <style>
+                    body {{ font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333; }}
+                    .header {{ background: #f8f9fa; padding: 20px; border-bottom: 2px solid #eee; }}
+                    .content {{ padding: 20px; }}
+                    .footer {{ background: #f8f9fa; padding: 10px; text-align: center; font-size: 12px; color: #999; }}
+                    .field {{ margin-bottom: 15px; }}
+                    .label {{ font-weight: bold; color: #666; }}
+                    .message-box {{ background: #f5f5f5; padding: 15px; border-radius: 5px; margin-top: 10px; border: 1px solid #ddd; }}
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h2>Nuevo mensaje de contacto 📬</h2>
+                </div>
+                <div class="content">
+                    <div class="field">
+                        <span class="label">Nombre:</span> {}
+                    </div>
+                    <div class="field">
+                        <span class="label">Email de contacto:</span> {}
+                    </div>
+                    <div class="field">
+                        <span class="label">Asunto:</span> {}
+                    </div>
+                    <div class="field">
+                        <span class="label">Mensaje:</span>
+                        <div class="message-box">
+                            {}
+                        </div>
+                    </div>
+                </div>
+                <div class="footer">
+                    <p>Este mensaje fue enviado desde el formulario de contacto de Vallenato Academy.</p>
+                </div>
+            </body>
+        </html>
+        "#,
+        name, from_email, subject_input, message
+    );
+
+    let placeholders = vec![
+        ("{{name}}".to_string(), name.to_string()),
+        ("{{email}}".to_string(), from_email.to_string()),
+        ("{{subject}}".to_string(), subject_input.to_string()),
+        ("{{message}}".to_string(), message.to_string()),
+    ];
+
+    send_email(&admin_email, &subject, &body_html, &placeholders).await
+}

@@ -26,6 +26,21 @@ pub struct RegisterDTO {
 }
 
 #[derive(Validate, Debug, Default, Clone, Serialize, Deserialize)]
+pub struct ContactDTO {
+    #[validate(length(min = 1, message = "El nombre es requerido"))]
+    pub name: String,
+    #[validate(
+        length(min = 1, message = "El correo electrónico es requerido"),
+        email(message = "El correo electrónico no es válido")
+    )]
+    pub email: String,
+    #[validate(length(min = 1, message = "El asunto es requerido"))]
+    pub subject: String,
+    #[validate(length(min = 1, message = "El mensaje es requerido"))]
+    pub message: String,
+}
+
+#[derive(Validate, Debug, Default, Clone, Serialize, Deserialize)]
 pub struct LoginDTO {
     #[validate(
         length(min = 1, message = "El correo electrónico es requerido"),
@@ -178,7 +193,6 @@ pub struct VerifiedUserData {
     pub email: String,
     pub role: UserRole,
 }
-
 
 #[derive(Debug, Deserialize, Validate)]
 pub struct ResendVerificationDTO {
@@ -437,7 +451,6 @@ pub struct ProductDTO {
     pub image_url: Option<String>,
     pub home_url: Option<String>,
 }
-
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UserProfileResponse {

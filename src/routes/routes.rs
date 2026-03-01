@@ -4,6 +4,7 @@ use actix_web::{
 };
 use uuid::Uuid;
 
+use crate::func::courses;
 use crate::func::payments;
 use crate::func::{
     achievements::{
@@ -31,7 +32,6 @@ use crate::func::{
     },
     users::{get_me, get_users, update_user_name, update_user_password, update_user_role},
 };
-use crate::func::{courses};
 use crate::middleware::middleware::{AccessCheck, RequiredAccess, RoleCheck};
 use crate::models::models::UserRole;
 use crate::{
@@ -53,6 +53,7 @@ pub fn auth_scope() -> impl HttpServiceFactory {
         .service(handlers::forgot_password)
         .service(handlers::reset_password)
         .service(handlers::resend_verification)
+        .service(handlers::contact_handler)
         .service(resource("/plans/subscriptions").route(get().to(get_subscription_plans)))
 }
 

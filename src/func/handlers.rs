@@ -1,11 +1,13 @@
 use crate::AppState;
 use crate::config::dtos::{
-    FilterUserDto, ForgotPasswordRequestDTO, LoginDTO, RegisterDTO, ResendVerificationDTO,
-    ResetPasswordRequestDTO, Response, UpdateUserProfileDto, UserLoginResponseDto,
-    UserProfileResponse, VerifyEmailQueryDTO,
+    ContactDTO, FilterUserDto, ForgotPasswordRequestDTO, LoginDTO, RegisterDTO,
+    ResendVerificationDTO, ResetPasswordRequestDTO, Response, UpdateUserProfileDto,
+    UserLoginResponseDto, UserProfileResponse, VerifyEmailQueryDTO,
 };
 use crate::errors::error::{ErrorMessage, HttpError};
-use crate::mail::mails::{send_forgot_password_email, send_verification_email, send_welcome_email};
+use crate::mail::mails::{
+    send_contact_email, send_forgot_password_email, send_verification_email, send_welcome_email,
+};
 use crate::middleware::middleware::JWTAuthMiddleware;
 use crate::utils::password::{hash_password, hash_token, verify_password};
 use crate::utils::token::{base_url, create_token_rsa};
@@ -503,4 +505,25 @@ pub async fn update_user_profile(
             "Usuario no autenticado".to_string(),
         )),
     }
+}
+
+#[post("/contact")]
+pub async fn contact_handler(Json(body): Json<ContactDTO>) -> Result<HttpResponse, HttpError> {
+    body.validate()
+        .map_err(|e| HttpError::bad_request(e.to_string()))?;
+
+    if let Err(e) = send_contact_email(&body.name, &body.email, &body.subject, &body.message).await
+    {
+        log::error!("Error enviando email de contacto: {}", e);
+        return Err(HttpError::server_error(format!(
+            "Ocurrió un error al enviar el mensaje: {}",
+            e
+        )));
+    }
+
+    Ok(HttpResponse::Ok().json(Response {
+        status: "success",
+        message: "Mensaje enviado exitosamente. Nos pondremos en contacto contigo pronto."
+            .to_string(),
+    }))
 }
