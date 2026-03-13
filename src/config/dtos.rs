@@ -661,3 +661,114 @@ pub struct CertificateDto {
     pub completion_percentage: f64,
     pub certificate_number: String,
 }
+
+// ===================== //
+// EVENT DTOs
+// ===================== //
+
+#[derive(Validate, Debug, Clone, Serialize, Deserialize)]
+pub struct CreateEventRequestDTO {
+    #[validate(length(min = 1, message = "El nombre es requerido"))]
+    pub name: String,
+    #[validate(
+        length(min = 1, message = "El correo electrónico es requerido"),
+        email(message = "El correo electrónico no es válido")
+    )]
+    pub email: String,
+    pub phone: Option<String>,
+    #[validate(length(min = 1, message = "El tipo de evento es requerido"))]
+    #[serde(rename = "eventType")]
+    pub event_type: String,
+    #[serde(rename = "eventDate")]
+    pub event_date: Option<NaiveDate>,
+    pub location: Option<String>,
+    pub guests: Option<i32>,
+    #[validate(length(min = 1, message = "El mensaje es requerido"))]
+    pub message: String,
+    pub budget: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct EventRequestResponseDto {
+    pub id: Uuid,
+    pub name: String,
+    pub email: String,
+    pub phone: Option<String>,
+    #[serde(rename = "eventType")]
+    pub event_type: String,
+    #[serde(rename = "eventDate")]
+    pub event_date: Option<NaiveDate>,
+    pub location: Option<String>,
+    pub guests: Option<i32>,
+    pub message: Option<String>,
+    pub budget: Option<String>,
+    pub status: String,
+    #[serde(rename = "createdAt")]
+    pub created_at: DateTime<Utc>,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct UpdateEventStatusDTO {
+    #[validate(length(min = 1, message = "El estado es requerido"))]
+    pub status: String,
+}
+
+// ===================== //
+// INBOX DTOs
+// ===================== //
+
+#[derive(Debug, Deserialize)]
+pub struct ResendWebhookPayload {
+    pub r#type: String,
+    pub created_at: String,
+    pub data: ResendWebhookData,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ResendWebhookData {
+    pub email_id: String,
+    pub created_at: String,
+    pub from: String,
+    pub to: Vec<String>,
+    pub subject: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ReceivedEmailResponseDto {
+    pub id: Uuid,
+    pub resend_email_id: String,
+    pub from_address: String,
+    pub to_address: String,
+    pub subject: String,
+    pub text_content: Option<String>,
+    pub html_content: Option<String>,
+    pub is_read: bool,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ReplyEmailDto {
+    pub to_address: String,
+    pub subject: String,
+    pub html_content: Option<String>,
+    pub text_content: Option<String>,
+}
+
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreatePresentacionVideoDTO {
+    pub title: String,
+    pub source: String,
+    pub video_url: String,
+    pub embed_url: String,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdatePresentacionVideoDTO {
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub embed_url: Option<String>,
+}

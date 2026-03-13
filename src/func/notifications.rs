@@ -1,15 +1,14 @@
-use std::sync::Arc;
-use actix_web::{HttpMessage, HttpRequest, HttpResponse, Responder, web::{Data, Json}};
+use actix_web::{
+    HttpMessage, HttpRequest, HttpResponse, Responder,
+    web::{Data, Json},
+};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use tokio::spawn;
 
 use crate::{
-    db::db::UserExt,
-    errors::error::HttpError,
-    mail::mails::send_admin_bulk_email,
-    middleware::middleware::JWTAuthMiddleware,
-    models::models::UserRole,
-    AppState,
+    AppState, db::db::UserExt, errors::error::HttpError, mail::sendmail::send_bulk_notification,
+    middleware::middleware::JWTAuthMiddleware, models::models::UserRole,
 };
 
 // =============================================
@@ -49,7 +48,9 @@ pub async fn send_bulk_email(
         .ok_or_else(|| HttpError::unauthorized("Usuario no autenticado".to_string()))?;
 
     if user_data.claims.role != UserRole::Admin {
-        return Err(HttpError::forbidden("Solo administradores pueden enviar correos masivos".to_string()));
+        return Err(HttpError::forbidden(
+            "Solo administradores pueden enviar correos masivos".to_string(),
+        ));
     }
 
     // Validate input
@@ -57,13 +58,15 @@ pub async fn send_bulk_email(
         return Err(HttpError::bad_request("El asunto es requerido".to_string()));
     }
     if body.html_content.is_empty() {
-        return Err(HttpError::bad_request("El contenido es requerido".to_string()));
+        return Err(HttpError::bad_request(
+            "El contenido es requerido".to_string(),
+        ));
     }
 
     // Get users with the specified notification preference
     let users = app_state
         .db_client
-        .get_users_by_notification_type(&body.notification_type)
+        .get_users_by_notification_type(&[&body.notification_type])
         .await
         .map_err(|e| {
             log::error!("Error getting users by notification type: {}", e);
@@ -84,26 +87,32 @@ pub async fn send_bulk_email(
     let subject = body.subject.clone();
     let html_content = body.html_content.clone();
 
-    // Spawn background task to send emails
+    // Spawn background task to send emails via batch API
     spawn(async move {
-        for (email, name) in users {
-            match send_admin_bulk_email(&email, &name, &subject, &html_content).await {
-                Ok(_) => {
-                    log::info!("Email sent successfully to: {}", email);
-                }
-                Err(e) => {
-                    log::error!("Failed to send email to {}: {}", email, e);
-                }
+        let user_refs: Vec<(&str, &str)> = users
+            .iter()
+            .map(|(email, name)| (email.as_str(), name.as_str()))
+            .collect();
+
+        match send_bulk_notification(user_refs, &subject, &html_content).await {
+            Ok(_) => {
+                log::info!(
+                    "Bulk email sent successfully to {} recipients",
+                    recipients_count
+                );
             }
-            // Small delay to avoid overwhelming SMTP server
-            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            Err(e) => {
+                log::error!("Failed to send bulk email: {}", e);
+            }
         }
-        log::info!("Bulk email sending completed");
     });
 
     Ok(HttpResponse::Ok().json(BulkEmailResponse {
         success: true,
-        message: format!("Enviando correos a {} usuarios en segundo plano", recipients_count),
+        message: format!(
+            "Enviando correos a {} usuarios en segundo plano",
+            recipients_count
+        ),
         recipients_count,
     }))
 }
@@ -127,12 +136,14 @@ pub async fn get_notification_recipients_count(
         .ok_or_else(|| HttpError::unauthorized("Usuario no autenticado".to_string()))?;
 
     if user_data.claims.role != UserRole::Admin {
-        return Err(HttpError::forbidden("Solo administradores pueden ver esta información".to_string()));
+        return Err(HttpError::forbidden(
+            "Solo administradores pueden ver esta información".to_string(),
+        ));
     }
 
-    let users = app_state
+    let count = app_state
         .db_client
-        .get_users_by_notification_type(&notification_type)
+        .get_users_count_by_any_notification_type(&[&notification_type])
         .await
         .map_err(|e| {
             log::error!("Error getting users count: {}", e);
@@ -141,6 +152,6 @@ pub async fn get_notification_recipients_count(
 
     Ok(HttpResponse::Ok().json(NotificationCountResponse {
         notification_type: notification_type.into_inner(),
-        count: users.len(),
+        count: count as usize,
     }))
 }

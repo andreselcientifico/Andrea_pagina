@@ -11,6 +11,7 @@ mod services;
 mod test;
 mod utils;
 
+use crate::func::inbox::resend_webhook;
 use crate::func::payments::paypal_webhook;
 use crate::routes::routes::{auth_scope, course_scope, global_scope};
 use actix_files::Files;
@@ -26,13 +27,13 @@ use chrono::{DateTime, Utc};
 use config::config::Config;
 use db::db::DBClient;
 use dotenvy;
-use tera::{Context, Tera};
 // use env_logger::Env;
 use reqwest::Client;
 use serde_json::Value;
 use services::paypal_client::PayPalClient;
 use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
+use tera::{Context, Tera};
 use tokio::sync::RwLock;
 //==================== //
 //      APP STATE
@@ -120,7 +121,8 @@ async fn main() -> std::io::Result<()> {
             e
         );
     }
-    //env_logger::Builder::from_env(Env::default().default_filter_or("debug,actix_server=info")).init();
+    //env_logger::Builder::from_env(Env::default().default_filter_or("debug,actix_server=info"))
+    //   .init();
 
     // Crear conexión a Postgres
     let config = Config::init();
@@ -197,6 +199,7 @@ async fn main() -> std::io::Result<()> {
             .service(
                 scope("/back")
                     .service(resource("/payments/webhooks/paypal").route(post().to(paypal_webhook)))
+                    .service(resource("/webhooks/resend").route(post().to(resend_webhook)))
                     .service(auth_scope())
                     .service(course_scope())
                     .service(global_scope()),

@@ -131,7 +131,6 @@ pub struct UserAchievement {
     pub earned_at: Option<DateTime<Utc>>,
 }
 
-
 // ===================== //
 // PLANES DE SUSCRIPCIÓN
 // ===================== //
@@ -241,4 +240,58 @@ pub struct Certificate {
     pub issue_date: DateTime<Utc>,
     pub completion_percentage: f64,
     pub created_at: DateTime<Utc>,
+}
+
+// ===================== //
+// SOLICITUDES DE EVENTOS
+// ===================== //
+
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow, Clone)]
+pub struct EventRequest {
+    pub id: Uuid,
+    pub name: String,
+    pub email: String,
+    pub phone: Option<String>,
+    pub event_type: String,
+    pub event_date: Option<chrono::NaiveDate>,
+    pub location: Option<String>,
+    pub guests: Option<i32>,
+    pub message: Option<String>,
+    pub budget: Option<String>,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+// ===================== //
+// CORREOS RECIBIDOS
+// ===================== //
+
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow, Clone)]
+pub struct ReceivedEmail {
+    pub id: Uuid,
+    pub resend_email_id: String,
+    pub from_address: String,
+    pub to_address: String,
+    pub subject: String,
+    pub text_content: Option<String>,
+    pub html_content: Option<String>,
+    pub is_read: bool,
+    pub created_at: DateTime<Utc>,
+}
+
+// ===================== //
+// VIDEOS DEL PRESENTACION
+// ===================== //
+
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow, Clone)]
+pub struct PresentacionVideo {
+    pub id: Uuid,
+    pub title: String,
+    pub source: String, // "youtube" o "facebook"
+    pub video_url: String,
+    pub embed_url: String,
+    pub description: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }

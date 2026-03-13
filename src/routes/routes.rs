@@ -21,6 +21,9 @@ use crate::func::{
         get_courses_with_modules, get_lesson_comments, get_rating, update_course,
         update_lesson_progress,
     },
+    presentacion_videos::{
+        create_presentacion_video, delete_presentacion_video, get_presentacion_video, get_presentacion_videos, update_presentacion_video,
+    },
     payments::created_order,
     quizzes::{
         get_attempt_detail_handler, get_quiz_by_lesson_handler, get_quiz_questions_handler,
@@ -36,7 +39,9 @@ use crate::middleware::middleware::{AccessCheck, RequiredAccess, RoleCheck};
 use crate::models::models::UserRole;
 use crate::{
     func::{
+        events::{create_event_request, get_event_requests, update_event_status},
         handlers,
+        inbox::{delete_received_email, get_received_emails, mark_email_read, reply_to_email},
         notifications::{get_notification_recipients_count, send_bulk_email},
         quizzes::{create_quiz_handler, delete_quiz_handler, update_quiz_handler},
         users::update_notification_settings,
@@ -54,6 +59,8 @@ pub fn auth_scope() -> impl HttpServiceFactory {
         .service(handlers::reset_password)
         .service(handlers::resend_verification)
         .service(handlers::contact_handler)
+        .service(create_event_request)
+        .service(resource("/presentacion-videos").route(get().to(get_presentacion_videos)))
         .service(resource("/plans/subscriptions").route(get().to(get_subscription_plans)))
 }
 
@@ -235,12 +242,45 @@ pub fn global_scope() -> impl HttpServiceFactory {
                 ),
         )
         .service(
-            scope("/admin/notifications")
-                .wrap(RoleCheck::new(vec![UserRole::Admin]))
-                .service(resource("/send").route(post().to(send_bulk_email)))
+            scope("/presentacion-videos")
                 .service(
-                    resource("/count/{notification_type}")
-                        .route(get().to(get_notification_recipients_count)),
+                    resource("")
+                        .route(post().to(create_presentacion_video)
+                        .wrap(RoleCheck::new(vec![UserRole::Admin])))
+                )
+                .service(
+                    resource("/{video_id}")
+                        .route(get().to(get_presentacion_video))
+                        .route(put().to(update_presentacion_video)
+                        .wrap(RoleCheck::new(vec![UserRole::Admin])))
+                        .route(delete().to(delete_presentacion_video)
+                        .wrap(RoleCheck::new(vec![UserRole::Admin]))),
+                ),
+        )
+        .service(
+            scope("/admin")
+                .wrap(RoleCheck::new(vec![UserRole::Admin]))
+                .service(
+                    scope("/notifications")
+                        .service(resource("/send").route(post().to(send_bulk_email)))
+                        .service(
+                            resource("/count/{notification_type}")
+                                .route(get().to(get_notification_recipients_count)),
+                        ),
+                )
+                .service(
+                    scope("/events")
+                        .service(resource("").route(get().to(get_event_requests)))
+                        .service(
+                            resource("/{event_id}/status").route(put().to(update_event_status)),
+                        ),
+                )
+                .service(
+                    scope("/inbox")
+                        .service(resource("").route(get().to(get_received_emails)))
+                        .service(resource("/{id}/read").route(put().to(mark_email_read)))
+                        .service(resource("/{id}/reply").route(post().to(reply_to_email)))
+                        .service(resource("/{id}").route(delete().to(delete_received_email))),
                 ),
         )
         .service(handlers::get_user_profile)

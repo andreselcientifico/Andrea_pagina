@@ -49,7 +49,7 @@ pub async fn send_verification_email(
         ("{{verification_link}}".to_string(), verification_link),
     ];
 
-    send_email(to_email, subject, &body_html, &placeholders).await
+    send_email(to_email, subject, &body_html, &placeholders, "Vallenato Femenino <verificacion@vallenatofemenino.com>", None).await
 }
 
 fn create_verification_link(base_url: &String, token: &str) -> String {
@@ -92,7 +92,7 @@ pub async fn send_welcome_email(
         username
     );
 
-    send_email(to_email, subject, &body_html, &placeholders).await
+    send_email(to_email, subject, &body_html, &placeholders, "Vallenato Femenino <bienvenida@vallenatofemenino.com>", None).await
 }
 
 pub async fn send_forgot_password_email(
@@ -140,7 +140,7 @@ pub async fn send_forgot_password_email(
         username, reset_link
     );
 
-    send_email(to_email, subject, &body_html, &placeholders).await
+    send_email(to_email, subject, &body_html, &placeholders, "Vallenato Femenino <recuperar@vallenatofemenino.com>", None).await
 }
 
 /// Notifies a user about new content (course/lesson) being added
@@ -195,48 +195,7 @@ pub async fn send_new_content_email(
         username, content_type, content_title
     );
 
-    send_email(to_email, &subject, &body_html, &placeholders).await
-}
-
-/// Sends a custom administrative email to users
-pub async fn send_admin_bulk_email(
-    to_email: &str,
-    username: &str,
-    subject: &str,
-    html_content: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let placeholders = vec![("{{username}}".to_string(), username.to_string())];
-
-    let body_html = format!(
-        r#"
-        <html>
-            <head>
-                <style>
-                    body {{ font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; }}
-                    .header {{ background: linear-gradient(135deg, #764ba2 0%, #667eea 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }}
-                    .content {{ padding: 30px; background: #ffffff; line-height: 1.6; }}
-                    .footer {{ background: #f8f9fa; padding: 20px; text-align: center; font-size: 12px; color: #666; border-radius: 0 0 8px 8px; }}
-                </style>
-            </head>
-            <body>
-                <div class="header">
-                    <h1>🎹 Vallenato Academy</h1>
-                </div>
-                <div class="content">
-                    <p>¡Hola, {}! 👋</p>
-                    {}
-                </div>
-                <div class="footer">
-                    <p>Equipo de Vallenato Academy</p>
-                    <p style="font-size: 10px; color: #999;">Si no deseas recibir estas notificaciones, puedes desactivarlas en la configuración de tu perfil.</p>
-                </div>
-            </body>
-        </html>
-        "#,
-        username, html_content
-    );
-
-    send_email(to_email, subject, &body_html, &placeholders).await
+    send_email(to_email, &subject, &body_html, &placeholders, "Vallenato Femenino <admin@vallenatofemenino.com>", None).await
 }
 
 pub async fn send_contact_email(
@@ -245,12 +204,8 @@ pub async fn send_contact_email(
     subject_input: &str,
     message: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let admin_email = std::env::var("ADMIN_EMAIL").unwrap_or_else(|_| {
-        std::env::var("SMTP_USERNAME").unwrap_or_else(|_| "admin@vallenatofemenino.com".to_string())
-    });
-
+    let admin_email = std::env::var("ADMIN_EMAIL").unwrap_or_else(|_| "receiving@oibauzorio.resend.app".to_string());
     let subject = format!("📬 Nuevo mensaje de contacto: {}", subject_input);
-
     let body_html = format!(
         r#"
         <html>
@@ -302,5 +257,84 @@ pub async fn send_contact_email(
         ("{{message}}".to_string(), message.to_string()),
     ];
 
-    send_email(&admin_email, &subject, &body_html, &placeholders).await
+    send_email(&admin_email, &subject, &body_html, &placeholders, "Vallenato Femenino <contacto@vallenatofemenino.com>", None).await
+}
+
+pub async fn send_event_request_notification(
+    name: &str,
+    email: &str,
+    phone: &str,
+    event_type: &str,
+    event_date: &str,
+    location: &str,
+    guests: &str,
+    message: &str,
+    budget: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let admin_email = std::env::var("ADMIN_EMAIL").unwrap_or_else(|_| "receiving@oibauzorio.resend.app".to_string());
+    let subject = format!("🎵 Nueva solicitud de evento: {} - {}", event_type, name);
+    let body_html = format!(
+        r#"
+        <html>
+            <head>
+                <style>
+                    body {{ font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333; }}
+                    .header {{ background: linear-gradient(135deg, #764ba2 0%, #667eea 100%); color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }}
+                    .content {{ padding: 20px; }}
+                    .footer {{ background: #f8f9fa; padding: 10px; text-align: center; font-size: 12px; color: #999; border-radius: 0 0 8px 8px; }}
+                    .field {{ margin-bottom: 15px; }}
+                    .label {{ font-weight: bold; color: #666; }}
+                    .message-box {{ background: #f5f5f5; padding: 15px; border-radius: 5px; margin-top: 10px; border: 1px solid #ddd; }}
+                    .event-badge {{ display: inline-block; background: #764ba2; color: white; padding: 5px 15px; border-radius: 20px; font-weight: bold; margin: 10px 0; }}
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h2>🎵 Nueva Solicitud de Evento</h2>
+                </div>
+                <div class="content">
+                    <div class="field">
+                        <span class="label">Tipo de evento:</span>
+                        <span class="event-badge">{}</span>
+                    </div>
+                    <div class="field">
+                        <span class="label">Nombre:</span> {}
+                    </div>
+                    <div class="field">
+                        <span class="label">Email:</span> {}
+                    </div>
+                    <div class="field">
+                        <span class="label">Teléfono:</span> {}
+                    </div>
+                    <div class="field">
+                        <span class="label">Fecha del evento:</span> {}
+                    </div>
+                    <div class="field">
+                        <span class="label">Ubicación:</span> {}
+                    </div>
+                    <div class="field">
+                        <span class="label">Invitados estimados:</span> {}
+                    </div>
+                    <div class="field">
+                        <span class="label">Presupuesto:</span> {}
+                    </div>
+                    <div class="field">
+                        <span class="label">Mensaje:</span>
+                        <div class="message-box">
+                            {}
+                        </div>
+                    </div>
+                </div>
+                <div class="footer">
+                    <p>Esta solicitud fue enviada desde el formulario de eventos de Vallenato Femenino.</p>
+                </div>
+            </body>
+        </html>
+        "#,
+        event_type, name, email, phone, event_date, location, guests, budget, message
+    );
+
+    let placeholders = vec![];
+
+    send_email(&admin_email, &subject, &body_html, &placeholders, "Vallenato Femenino <eventos@vallenatofemenino.com>", None).await
 }

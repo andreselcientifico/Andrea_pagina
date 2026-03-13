@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc};
 use actix_web::{  HttpResponse, web::{ self, Data, Json, Path, Query, ReqData } };
 use validator::Validate;
 use uuid::Uuid;
@@ -11,9 +11,9 @@ use crate::{
     config::dtos::{ CreateCourseDTO, CreatedCommentDto, CreatedRatingDto, ProductDTO, UpdateCourseDTO, UpdateLessonProgressDTO }, 
     db::db::{CourseExt, CoursePurchaseExt, UserAchievementExt, UserExt}, 
     errors::error::{ ErrorMessage, HttpError }, 
-    func::payments::{create_product }, 
-    mail::mails::send_new_content_email,
-    middleware::middleware::{ JWTAuthMiddleware },
+    func::payments::create_product, 
+    mail::{sendmail::send_bulk_new_content_emails},
+    middleware::middleware::JWTAuthMiddleware,
 };
 
 //===================COMMENTS===================//
@@ -245,39 +245,11 @@ pub async fn create_course(
     let course_title = course.title.clone();
     
     tokio::spawn(async move {
-        // Get users with course_reminders enabled
-        if let Ok(users_reminders) = app_state_clone.db_client
-            .get_users_by_notification_type("course_reminders")
-            .await
-        {
-            for (email, name) in users_reminders {
-                if let Err(e) = send_new_content_email(
-                    &email,
-                    &name,
-                    "curso",
-                    &course_title,
-                ).await {
-                    log::error!("Error sending course reminder email to {}: {}", email, e);
+        if let Ok(users_list) = app_state_clone.db_client.get_users_by_notification_type(&["course_reminders", "new_content"]).await {
+            if !users_list.is_empty() {
+                if let Err(e) = send_bulk_new_content_emails(users_list, "curso", &course_title).await {
+                    log::error!("Error ejecutando envío masivo de correos: {}", e);
                 }
-                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-            }
-        }
-
-        // Get users with new_content enabled
-        if let Ok(users_new_content) = app_state_clone.db_client
-            .get_users_by_notification_type("new_content")
-            .await
-        {
-            for (email, name) in users_new_content {
-                if let Err(e) = send_new_content_email(
-                    &email,
-                    &name,
-                    "curso",
-                    &course_title,
-                ).await {
-                    log::error!("Error sending new content email to {}: {}", email, e);
-                }
-                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
             }
         }
     });

@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 
@@ -11,7 +10,7 @@ use crate::{
         CertificateDto, CommentLessonDto, CoursePageRow, CourseRatingDto, CourseWithModulesDto, CreateCourseDTO, CreateLessonDTO, CreateModuleDTO, CreateQuizDto, LessonDto, ModuleWithLessonsDto, OptionDto, QuestionDto, QuizAttemptDto, QuizResponseDto, UpdateCourseDTO, UserCourseDto, UserProfileData, VerifiedUserData
     },
     models::models::{
-        Achievement, Certificate, Course, ForgotPasswordResult, Lesson, Module, PasswordResetToken, Payment, Question, QuizAttempt, Subscription, SubscriptionPlan, User, UserAchievement, UserCourse, UserRole
+        Achievement, Certificate, Course, EventRequest, ForgotPasswordResult, PresentacionVideo, Lesson, Module, PasswordResetToken, Payment, Question, QuizAttempt, ReceivedEmail, Subscription, SubscriptionPlan, User, UserAchievement, UserCourse, UserRole
     }
 };
 
@@ -117,8 +116,13 @@ pub trait UserExt {
     /// notification_type can be: "email_notifications", "course_reminders", "new_content"
     async fn get_users_by_notification_type(
         &self,
-        notification_type: &str,
+        notification_types: &[&str],
     ) -> Result<Vec<(String, String)>, Error>;
+
+    async fn get_users_count_by_any_notification_type(
+        &self,
+        notification_types: &[&str],
+    ) -> Result<i64, Error>;
 
     /// Updates user notification preferences
     async fn update_notification_settings(
@@ -918,42 +922,58 @@ impl UserExt for DBClient {
 
     async fn get_users_by_notification_type(
         &self,
-        notification_type: &str,
+        notification_types: &[&str],
     ) -> Result<Vec<(String, String)>, Error> {
-        // Validate notification_type to prevent SQL injection
-        let column = match notification_type {
-            "email_notifications" => "email_notifications",
-            "course_reminders" => "course_reminders",
-            "new_content" => "new_content",
-            _ => {
-                return Err(Error::Protocol(
-                    "Invalid notification type. Must be one of: email_notifications, course_reminders, new_content".into(),
-                ));
+        // 1. Validar y recolectar las columnas seguras para evitar inyección SQL
+        let mut valid_columns = Vec::new();
+        for &nt in notification_types {
+            match nt {
+                "email_notifications" => valid_columns.push("email_notifications"),
+                "course_reminders" => valid_columns.push("course_reminders"),
+                "new_content" => valid_columns.push("new_content"),
+                _ => {
+                    return Err(Error::Protocol(
+                        format!("Invalid notification type: {}. Must be one of: email_notifications, course_reminders, new_content", nt).into()
+                    ));
+                }
             }
-        };
+        }
 
-        // Build query dynamically based on valid column
-        let query = format!(
+        // Si pasaron un arreglo vacío, retornamos una lista vacía de inmediato
+        if valid_columns.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // 2. Construir la cláusula OR dinámicamente: "course_reminders = true OR new_content = true"
+        let or_conditions: Vec<String> = valid_columns
+            .iter()
+            .map(|col| format!("{} = true", col))
+            .collect();
+        let or_clause = or_conditions.join(" OR ");
+
+        // 3. Ensamblar la consulta final
+        let query_string = format!(
             r#"
             SELECT email, name
             FROM users
-            WHERE {} = true AND verified = true
+            WHERE ({}) AND verified = true
             ORDER BY created_at DESC
             "#,
-            column
+            or_clause
         );
 
-        let rows = sqlx::query(&query)
+        let rows = sqlx::query(&query_string)
             .fetch_all(&self.pool)
             .await
             .map_err(|e| {
-                log::error!("Error getting users by notification type: {}", e);
+                log::error!("Error getting users by notification types: {}", e);
                 e
             })?;
 
         let users: Vec<(String, String)> = rows
             .iter()
             .map(|row| {
+                use sqlx::Row; // Asegura tener esto en el scope si no está
                 let email: String = row.get("email");
                 let name: String = row.get("name");
                 (email, name)
@@ -961,6 +981,41 @@ impl UserExt for DBClient {
             .collect();
 
         Ok(users)
+    }
+
+    async fn get_users_count_by_any_notification_type(
+        &self,
+        notification_types: &[&str],
+    ) -> Result<i64, Error> {
+        let mut valid_columns = Vec::new();
+        for &nt in notification_types {
+            match nt {
+                "email_notifications" | "course_reminders" | "new_content" => valid_columns.push(nt),
+                _ => return Err(Error::Protocol("Invalid notification type".into())),
+            }
+        }
+
+        if valid_columns.is_empty() { return Ok(0); }
+
+        let or_conditions: Vec<String> = valid_columns.iter().map(|col| format!("{} = true", col)).collect();
+        let or_clause = or_conditions.join(" OR ");
+
+        // Pedimos a la base de datos solo un número (COUNT)
+        let query_string = format!(
+            "SELECT COUNT(*) as count FROM users WHERE ({}) AND verified = true",
+            or_clause
+        );
+
+        // fetch_one con una tupla para extraer el conteo
+        let row: (i64,) = sqlx::query_as(&query_string)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| {
+                log::error!("Error getting users count: {}", e);
+                e
+            })?;
+
+        Ok(row.0)
     }
 
     async fn update_notification_settings(
@@ -4479,5 +4534,416 @@ impl CertificateExt for DBClient {
                     e
                 })?;
         Ok(certificates)
+    }
+}
+
+// ===================== //
+//      EVENTS EXT
+// ===================== //
+
+#[async_trait]
+pub trait EventExt {
+    async fn create_event_request(
+        &self,
+        name: &str,
+        email: &str,
+        phone: Option<&str>,
+        event_type: &str,
+        event_date: Option<chrono::NaiveDate>,
+        location: Option<&str>,
+        guests: Option<i32>,
+        message: Option<&str>,
+        budget: Option<&str>,
+    ) -> Result<EventRequest, Error>;
+
+    async fn get_event_requests(&self) -> Result<Vec<EventRequest>, Error>;
+
+    async fn update_event_status(
+        &self,
+        event_id: Uuid,
+        status: &str,
+    ) -> Result<(), Error>;
+}
+
+#[async_trait]
+impl EventExt for DBClient {
+    async fn create_event_request(
+        &self,
+        name: &str,
+        email: &str,
+        phone: Option<&str>,
+        event_type: &str,
+        event_date: Option<chrono::NaiveDate>,
+        location: Option<&str>,
+        guests: Option<i32>,
+        message: Option<&str>,
+        budget: Option<&str>,
+    ) -> Result<EventRequest, Error> {
+        let event = sqlx::query_as::<_, EventRequest>(
+            r#"
+            INSERT INTO event_requests (name, email, phone, event_type, event_date, location, guests, message, budget)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            RETURNING *
+            "#,
+        )
+        .bind(name)
+        .bind(email)
+        .bind(phone)
+        .bind(event_type)
+        .bind(event_date)
+        .bind(location)
+        .bind(guests)
+        .bind(message)
+        .bind(budget)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| {
+            log::error!("Error creating event request: {}", e);
+            e
+        })?;
+
+        Ok(event)
+    }
+
+    async fn get_event_requests(&self) -> Result<Vec<EventRequest>, Error> {
+        let events = sqlx::query_as::<_, EventRequest>(
+            r#"
+            SELECT * FROM event_requests
+            ORDER BY created_at DESC
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| {
+            log::error!("Error getting event requests: {}", e);
+            e
+        })?;
+
+        Ok(events)
+    }
+
+    async fn update_event_status(
+        &self,
+        event_id: Uuid,
+        status: &str,
+    ) -> Result<(), Error> {
+        sqlx::query(
+            r#"
+            UPDATE event_requests
+            SET status = $1, updated_at = NOW()
+            WHERE id = $2
+            "#,
+        )
+        .bind(status)
+        .bind(event_id)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| {
+            log::error!("Error updating event status: {}", e);
+            e
+        })?;
+
+        Ok(())
+    }
+}
+
+// ===================== //
+//      INBOX EXT
+// ===================== //
+
+#[async_trait]
+pub trait InboxExt {
+    async fn save_received_email(
+        &self,
+        resend_email_id: &str,
+        from_address: &str,
+        to_address: &str,
+        subject: &str,
+        text_content: Option<&str>,
+        html_content: Option<&str>,
+    ) -> Result<ReceivedEmail, Error>;
+
+    async fn get_received_emails(&self) -> Result<Vec<ReceivedEmail>, Error>;
+    async fn get_received_email(&self, id: Uuid) -> Result<Option<ReceivedEmail>, Error>;
+    async fn mark_email_read(&self, id: Uuid) -> Result<(), Error>;
+    async fn delete_received_email(&self, id: Uuid) -> Result<(), Error>;
+}
+
+#[async_trait]
+impl InboxExt for DBClient {
+    async fn save_received_email(
+        &self,
+        resend_email_id: &str,
+        from_address: &str,
+        to_address: &str,
+        subject: &str,
+        text_content: Option<&str>,
+        html_content: Option<&str>,
+    ) -> Result<ReceivedEmail, Error> {
+        let email = sqlx::query_as::<_, ReceivedEmail>(
+            r#"
+            INSERT INTO received_emails (resend_email_id, from_address, to_address, subject, text_content, html_content)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (resend_email_id) DO UPDATE SET
+                from_address = EXCLUDED.from_address,
+                to_address = EXCLUDED.to_address,
+                subject = EXCLUDED.subject,
+                text_content = EXCLUDED.text_content,
+                html_content = EXCLUDED.html_content
+            RETURNING *
+            "#,
+        )
+        .bind(resend_email_id)
+        .bind(from_address)
+        .bind(to_address)
+        .bind(subject)
+        .bind(text_content)
+        .bind(html_content)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| {
+            log::error!("Error saving received email: {}", e);
+            e
+        })?;
+
+        Ok(email)
+    }
+
+    async fn get_received_emails(&self) -> Result<Vec<ReceivedEmail>, Error> {
+        let emails = sqlx::query_as::<_, ReceivedEmail>(
+            r#"
+            SELECT * FROM received_emails
+            ORDER BY created_at DESC
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| {
+            log::error!("Error getting received emails: {}", e);
+            e
+        })?;
+
+        Ok(emails)
+    }
+
+    async fn get_received_email(&self, id: Uuid) -> Result<Option<ReceivedEmail>, Error> {
+        let email = sqlx::query_as::<_, ReceivedEmail>(
+            r#"
+            SELECT * FROM received_emails
+            WHERE id = $1
+            "#,
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| {
+            log::error!("Error getting received email: {}", e);
+            e
+        })?;
+
+        Ok(email)
+    }
+
+    async fn mark_email_read(&self, id: Uuid) -> Result<(), Error> {
+        sqlx::query(
+            r#"
+            UPDATE received_emails
+            SET is_read = true
+            WHERE id = $1
+            "#,
+        )
+        .bind(id)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| {
+            log::error!("Error marking email as read: {}", e);
+            e
+        })?;
+
+        Ok(())
+    }
+
+    async fn delete_received_email(&self, id: Uuid) -> Result<(), Error> {
+        sqlx::query(
+            r#"
+            DELETE FROM received_emails
+            WHERE id = $1
+            "#,
+        )
+        .bind(id)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| {
+            log::error!("Error deleting received email: {}", e);
+            e
+        })?;
+
+        Ok(())
+    }
+}
+
+#[async_trait]
+pub trait PresentacionVideosExt {
+    async fn get_presentacion_videos(&self ) -> Result<Vec<PresentacionVideo>, Error>;
+
+    async fn get_presentacion_video(&self, id: Uuid) -> Result<Option<PresentacionVideo>, Error>;
+
+    async fn create_presentacion_video(
+        &self, 
+        id: Uuid, 
+        title: &String, 
+        source: &String, 
+        video_url: &String, 
+        embed_url: &String, 
+        description: &Option<String>,
+    ) -> Result<PresentacionVideo, Error>;
+
+    async fn update_presentacion_video(
+        &self, 
+        id: Uuid, 
+        title: Option<&String>, 
+        description: Option<&String>, 
+        embed_url: Option<&String>
+    ) -> Result<PresentacionVideo, Error>;
+
+    async fn delete_presentacion_video(&self, id: Uuid) -> Result<(), Error>;
+
+}
+
+#[async_trait]
+impl PresentacionVideosExt for DBClient {
+    async fn get_presentacion_videos(&self) -> Result<Vec<PresentacionVideo>, Error> {
+        let videos = sqlx::query_as::<_, PresentacionVideo>(
+        r#"
+            SELECT id, title, source, video_url, embed_url, description, created_at, updated_at 
+            FROM presentacion_videos 
+            ORDER BY created_at DESC
+            "#
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err( |e|
+            {
+                log::error!("Error: {}", e);
+                e
+            }
+        )?;
+
+        Ok(videos)
+    }
+
+    async fn get_presentacion_video(&self, id: Uuid) -> Result<Option<PresentacionVideo>, Error> {
+        let video = sqlx::query_as::<_, PresentacionVideo>(
+            r#"
+                SELECT * FROM presentacion_videos
+                WHERE id = $1
+            "#
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(
+            |e|
+            {
+                log::error!("Error: {}", e);
+                e
+            }
+        )?;
+
+        Ok(video)
+    }
+
+    async fn create_presentacion_video(
+        &self, 
+        id: Uuid, 
+        title: &String, 
+        source: &String, 
+        video_url: &String, 
+        embed_url: &String, 
+        description: &Option<String>,
+    ) -> Result<PresentacionVideo, Error> {
+        let now = Utc::now();
+        let video = sqlx::query_as::<_, PresentacionVideo>(
+            r#"
+                INSERT INTO presentacion_videos (id, title, source, video_url, embed_url, description, created_at, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                RETURNING id, title, source, video_url, embed_url, description, created_at, updated_at
+            "#
+        )
+        .bind(id)
+        .bind(title)
+        .bind(source)
+        .bind(video_url)
+        .bind(embed_url)
+        .bind(description)
+        .bind(now)
+        .bind(now)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(
+            |e|
+            {
+                log::error!("Error: {}",e);
+                e
+            }
+        )?;
+
+        Ok(video)
+    }
+
+    async fn update_presentacion_video(
+        &self, 
+        id: Uuid, 
+        title: Option<&String>, 
+        description: Option<&String>, 
+        embed_url: Option<&String>
+    ) -> Result<PresentacionVideo, Error> {
+        let now = Utc::now();
+        let update = sqlx::query_as::<_, PresentacionVideo>(
+            r#"
+                UPDATE presentacion_videos
+                SET title = COALESCE($1, title),
+                    description = COALESCE($2, description),
+                    embed_url = COALESCE($3, embed_url),
+                    updated_at = $4
+                WHERE id = $5
+                RETURNING id, title, source, video_url, embed_url, description, created_at, updated_at
+            "#,
+        )
+        .bind(title)
+        .bind(description)
+        .bind(embed_url)
+        .bind(now)
+        .bind(id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(
+            |e|
+            {
+                log::error!("Error: {}", e);
+                e
+            }
+        )?;
+        Ok(update)
+    }
+
+    async fn delete_presentacion_video(&self, id: Uuid) -> Result<(), Error> {
+        sqlx::query(
+            r#"
+                DELETE FROM presentacion_videos
+                WHERE id = $1
+            "#,
+        )
+        .bind(id)
+        .execute(&self.pool)
+        .await
+        .map_err(
+            |e|
+            {
+                log::error!("Error: {}", e);
+                e
+            }
+        )?;
+        Ok(())
     }
 }
